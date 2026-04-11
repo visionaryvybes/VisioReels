@@ -322,9 +322,15 @@ function AppHeader({
         </span>
       </div>
 
-      {/* Step progress — center */}
-      <div className="absolute left-1/2 -translate-x-1/2">
+      {/* Step progress — center (only show on sm+) */}
+      <div className="absolute left-1/2 -translate-x-1/2 hidden sm:block">
         <StepPills current={currentStep} />
+      </div>
+      {/* Mobile: just show current step label */}
+      <div className="absolute left-1/2 -translate-x-1/2 sm:hidden">
+        <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: "rgba(59,130,246,0.12)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.2)" }}>
+          {STEP_META.find(s => s.step === currentStep)?.label ?? ""}
+        </span>
       </div>
 
       {/* Status — right */}
@@ -369,9 +375,11 @@ function Card({
       {...FU}
       className="rounded-2xl relative overflow-hidden"
       style={{
-        background: "#0f0f0f",
-        border: `1px solid ${accent ? `${accent}30` : "rgba(255,255,255,0.08)"}`,
-        boxShadow: glow ? `0 0 48px ${glow}` : "none",
+        background: "linear-gradient(160deg, #191919 0%, #141414 100%)",
+        border: `1px solid ${accent ? `${accent}35` : "rgba(255,255,255,0.11)"}`,
+        boxShadow: glow
+          ? `0 0 60px ${glow}, 0 1px 0 rgba(255,255,255,0.06) inset`
+          : "0 1px 0 rgba(255,255,255,0.06) inset, 0 4px 24px rgba(0,0,0,0.4)",
       }}
     >
       {/* Top accent shimmer */}
@@ -379,8 +387,8 @@ function Card({
         className="absolute top-0 left-0 right-0 h-px"
         style={{
           background: accent
-            ? `linear-gradient(90deg, transparent 5%, ${accent}88 50%, transparent 95%)`
-            : "linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.1) 50%, transparent 95%)",
+            ? `linear-gradient(90deg, transparent 5%, ${accent}99 50%, transparent 95%)`
+            : "linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.14) 50%, transparent 95%)",
         }}
       />
       {children}
@@ -450,8 +458,8 @@ function PlatformCard({
       onClick={onClick}
       className="relative w-full text-left rounded-xl overflow-hidden transition-all duration-150"
       style={{
-        background: selected ? m.bg : "#141414",
-        border: `1px solid ${selected ? m.border : "rgba(255,255,255,0.08)"}`,
+        background: selected ? m.bg : "linear-gradient(160deg,#1a1a1a,#151515)",
+        border: `1px solid ${selected ? m.border : "rgba(255,255,255,0.11)"}`,
         boxShadow: selected ? `0 0 28px ${m.color}22` : "none",
       }}
     >
@@ -511,7 +519,7 @@ function MoodCard({
       onClick={onClick}
       className="relative w-full text-left rounded-xl overflow-hidden"
       style={{
-        border: `1px solid ${selected ? p.accentColor + "60" : "rgba(255,255,255,0.07)"}`,
+        border: `1px solid ${selected ? p.accentColor + "60" : "rgba(255,255,255,0.11)"}`,
         boxShadow: selected ? `0 0 32px ${p.accentColor}22` : "none",
         outline: "none",
       }}
@@ -554,7 +562,7 @@ function MoodCard({
       {/* Info section */}
       <div
         className="px-3 pt-2.5 pb-3"
-        style={{ background: selected ? "rgba(255,255,255,0.025)" : "#111" }}
+        style={{ background: selected ? "rgba(255,255,255,0.03)" : "#161616" }}
       >
         <p className="text-[10px] leading-relaxed mb-2" style={{ color: "#555" }}>
           {p.description}
@@ -693,7 +701,7 @@ function ScriptDisplay({
       </div>
 
       {/* Voiceover */}
-      <div className="rounded-xl p-4" style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.07)" }}>
+      <div className="rounded-xl p-4" style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)" }}>
         <div className="text-[9px] font-black uppercase tracking-[0.18em] mb-2" style={{ color: "#444" }}>VOICEOVER</div>
         <textarea
           value={script.script}
@@ -705,7 +713,7 @@ function ScriptDisplay({
       </div>
 
       {/* CTA */}
-      <div className="rounded-xl p-3.5" style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.07)" }}>
+      <div className="rounded-xl p-3.5" style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)" }}>
         <div className="text-[9px] font-black uppercase tracking-[0.18em] mb-1.5" style={{ color: "#444" }}>CALL TO ACTION</div>
         <input
           value={script.cta ?? ""}
@@ -717,7 +725,7 @@ function ScriptDisplay({
       </div>
 
       {/* Captions */}
-      <div className="rounded-xl p-4" style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.07)" }}>
+      <div className="rounded-xl p-4" style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)" }}>
         <div className="text-[9px] font-black uppercase tracking-[0.18em] mb-3" style={{ color: "#444" }}>
           CAPTIONS · {script.captions.length} beats
         </div>
@@ -736,7 +744,7 @@ function ScriptDisplay({
 
       {/* Hashtags + style */}
       <div className="grid grid-cols-2 gap-2.5">
-        <div className="rounded-xl p-3.5" style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.07)" }}>
+        <div className="rounded-xl p-3.5" style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)" }}>
           <div className="text-[9px] font-black uppercase tracking-[0.18em] mb-2" style={{ color: "#444" }}>HASHTAGS</div>
           <div className="flex flex-wrap gap-1">
             {script.hashtags.map((h, i) => (
@@ -746,7 +754,7 @@ function ScriptDisplay({
             ))}
           </div>
         </div>
-        <div className="rounded-xl p-3.5" style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.07)" }}>
+        <div className="rounded-xl p-3.5" style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)" }}>
           <div className="text-[9px] font-black uppercase tracking-[0.18em] mb-2" style={{ color: "#444" }}>STYLE</div>
           <div className="space-y-1 text-[11px] font-medium" style={{ color: "#666" }}>
             <div>↗ {script.style?.transition ?? "—"}</div>
@@ -1149,7 +1157,7 @@ export default function VisioReelsPage() {
                   {platformObj && moodObj && (
                     <div
                       className="flex items-center gap-3 p-3.5 rounded-xl mb-5"
-                      style={{ background: "#151515", border: "1px solid rgba(255,255,255,0.08)" }}
+                      style={{ background: "#1c1c1c", border: "1px solid rgba(255,255,255,0.1)" }}
                     >
                       {imageDataUrls[0] && (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -1277,7 +1285,7 @@ export default function VisioReelsPage() {
                   {platformObj && (
                     <div
                       className="flex items-center gap-2.5 p-3 rounded-xl mb-5"
-                      style={{ background: "#151515", border: "1px solid rgba(255,255,255,0.08)" }}
+                      style={{ background: "#1c1c1c", border: "1px solid rgba(255,255,255,0.1)" }}
                     >
                       <Clapperboard size={13} style={{ color: "#555" }} />
                       <span className="text-[12px] font-semibold" style={{ color: "#777" }}>
