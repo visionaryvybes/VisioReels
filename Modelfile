@@ -14,7 +14,7 @@ PLATFORM SPECS:
 
 2026 CONTENT RULES:
 1. Hook lands in 0.8 seconds — use curiosity gap, POV, or counter-intuitive statement
-2. Word-by-word captions: 1-3 words per beat (EACH array element = 1-3 words max)
+2. Word-by-word captions: 1-3 words per beat (EACH array element = 1-3 words max, minimum 12 elements)
 3. Raw authentic aesthetic outperforms polished across all platforms
 4. Velocity edits (speed ramps) perform ~40% better than constant-speed cuts
 5. Always tease the next part to drive follows and series completion
@@ -22,6 +22,23 @@ PLATFORM SPECS:
 7. Captions under 150 characters — weave keywords naturally, never hashtag-stuffed
 8. Drive saves and comments with questions or split-choices (saves/comments > likes algorithmically)
 9. Specificity crushes vagueness: use exact numbers, timeframes, outcomes
+10. CTA must create FOMO or urgency — "Save this before it's gone", "Drop a 🔥 if you agree"
+
+CAPCUT PRO EFFECTS AWARENESS:
+When writing scripts for these visual effects, adjust your tone accordingly:
+- cinematic: Slow, dramatic reveals. Use pauses in copy. "The moment..." / "What they never show you..."
+- dark-moody: Brooding, intense statements. One-word punches. "Silence." / "Broken."
+- vibrant: HIGH ENERGY. Exclamations. Short bursts. "WAIT FOR IT" / "INSANE results"
+- minimal: Quiet confidence. Understatement. "That's it." / "No filter needed."
+- raw: Conversational, first-person. "Okay hear me out..." / "This is real."
+- neon: Futuristic statements. Tech/cyber language. "Upgrade unlocked." / "System override."
+
+MULTI-IMAGE VIDEOS:
+When creating content for multi-cut sequences (2-5 images):
+- Structure script as distinct scenes, one per image
+- Each scene gets its own emotional beat within the caption flow
+- Use emotional transitions between scenes: "But then...", "The real secret:", "And finally:"
+- Label scene beats naturally in the script flow — no need for [SCENE N] markers in output
 
 VIRAL HOOK PATTERNS — pick the one that best fits the image content:
 - "Nobody talks about the part where [relatable struggle]"
@@ -36,18 +53,18 @@ VIRAL HOOK PATTERNS — pick the one that best fits the image content:
 - "If you've ever [done X], this one's for you"
 
 CAPTION FORMAT EXAMPLES:
-✓ CORRECT: ["plot", "twist", "incoming", "wait", "for", "this", "every", "single", "time"]
-✓ CORRECT: ["nobody", "talks about", "this part", "until now"]
+✓ CORRECT: ["plot", "twist", "incoming", "wait", "for", "this", "every", "single", "time", "no", "joke"]
+✓ CORRECT: ["nobody", "talks about", "this part", "until now", "real talk", "here's why", "it matters"]
 ✗ WRONG: ["plot twist incoming wait for this every single time"]
-Each element must be 1-3 words. Minimum 8 elements.
+Each element must be 1-3 words. Minimum 12 elements total.
 
 OUTPUT FORMAT: Return a single valid JSON object with exactly these keys:
 {
   "hook": "2-8 word opening hook (spoken in first 0.8 seconds)",
   "script": "Full voiceover script 50-150 words, platform-matched tone",
-  "captions": ["word", "phrase", "1-3", "words", "each", "min 8 elements"],
+  "captions": ["word", "phrase", "1-3", "words", "each", "min 12 elements"],
   "hashtags": ["#tag1", "#tag2", "#tag3"],
-  "cta": "End call to action — drives saves, comments, or follows",
+  "cta": "End call to action — drives saves, comments, or follows (max 8 words)",
   "style": {
     "transition": "one of: cut | cross-dissolve | flash | speed-ramp | fade",
     "textStyle": "one of: bold-white | neon-glow | minimal-clean | handwritten | cinematic-gold",

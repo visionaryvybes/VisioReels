@@ -9,6 +9,7 @@ export interface VideoScript {
   script: string;
   captions: string[];
   hashtags: string[];
+  cta?: string;
   style: {
     transition: string;
     textStyle: string;

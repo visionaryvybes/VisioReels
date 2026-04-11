@@ -6,7 +6,9 @@ import {
   useCurrentFrame,
   useVideoConfig,
   Img,
-  Sequence,
+  Audio,
+  staticFile,
+  random,
 } from "remotion";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -20,10 +22,12 @@ interface StyleConfig {
 export interface SocialReelProps {
   script: string;
   captions: string[];
-  imageSrc: string;
+  imageSrc?: string;    // backward compat: single image
+  imageSrcs?: string[]; // multi-image: array
   platform: string;
   mood: string;
   hook: string;
+  cta?: string;
   style: StyleConfig;
 }
 
@@ -45,6 +49,11 @@ interface MoodConfig {
   barColor: string;
   flashColor: string;
   kenBurns: { startScale: number; endScale: number; tx: [number, number]; ty: [number, number] };
+  hasFilmGrain: boolean;
+  hasGlitch: boolean;
+  hasChromatic: boolean;
+  hasSpeedLines: boolean;
+  grainIntensity: number;
 }
 
 const MOOD: Record<string, MoodConfig> = {
@@ -62,8 +71,13 @@ const MOOD: Record<string, MoodConfig> = {
     progressColor: "#f4c430",
     hasCinematicBars: true,
     barColor: "#000000",
-    flashColor: "rgba(244,196,48,0.25)",
+    flashColor: "rgba(244,196,48,0.3)",
     kenBurns: { startScale: 1.0, endScale: 1.15, tx: [-1.5, 1.5], ty: [-1, 1] },
+    hasFilmGrain: true,
+    hasGlitch: false,
+    hasChromatic: false,
+    hasSpeedLines: false,
+    grainIntensity: 0.055,
   },
   "dark-moody": {
     imageFilter: "saturate(0.3) contrast(1.28) brightness(0.68)",
@@ -81,6 +95,11 @@ const MOOD: Record<string, MoodConfig> = {
     barColor: "#000000",
     flashColor: "rgba(255,255,255,0.9)",
     kenBurns: { startScale: 1.14, endScale: 1.26, tx: [0, 0], ty: [-3, 1] },
+    hasFilmGrain: true,
+    hasGlitch: true,
+    hasChromatic: true,
+    hasSpeedLines: false,
+    grainIntensity: 0.075,
   },
   vibrant: {
     imageFilter: "saturate(1.7) brightness(1.08) contrast(1.06)",
@@ -98,6 +117,11 @@ const MOOD: Record<string, MoodConfig> = {
     barColor: "#000000",
     flashColor: "rgba(255,140,0,0.7)",
     kenBurns: { startScale: 1.0, endScale: 1.2, tx: [-3, 3], ty: [0, 0] },
+    hasFilmGrain: false,
+    hasGlitch: false,
+    hasChromatic: false,
+    hasSpeedLines: true,
+    grainIntensity: 0,
   },
   minimal: {
     imageFilter: "brightness(1.05) contrast(0.96) saturate(0.88)",
@@ -115,6 +139,11 @@ const MOOD: Record<string, MoodConfig> = {
     barColor: "#000000",
     flashColor: "rgba(255,255,255,0.4)",
     kenBurns: { startScale: 1.0, endScale: 1.07, tx: [0, 0], ty: [0, 0] },
+    hasFilmGrain: false,
+    hasGlitch: false,
+    hasChromatic: false,
+    hasSpeedLines: false,
+    grainIntensity: 0,
   },
   raw: {
     imageFilter: "contrast(1.07) brightness(1.02)",
@@ -132,6 +161,11 @@ const MOOD: Record<string, MoodConfig> = {
     barColor: "#000000",
     flashColor: "rgba(255,255,255,0.5)",
     kenBurns: { startScale: 1.02, endScale: 1.12, tx: [1.5, -1.5], ty: [1, -1] },
+    hasFilmGrain: true,
+    hasGlitch: false,
+    hasChromatic: false,
+    hasSpeedLines: true,
+    grainIntensity: 0.04,
   },
   neon: {
     imageFilter: "saturate(1.4) brightness(0.78) contrast(1.2) hue-rotate(15deg)",
@@ -149,6 +183,11 @@ const MOOD: Record<string, MoodConfig> = {
     barColor: "#000000",
     flashColor: "rgba(0,229,255,0.6)",
     kenBurns: { startScale: 1.1, endScale: 1.0, tx: [0, 0], ty: [0, 0] },
+    hasFilmGrain: false,
+    hasGlitch: true,
+    hasChromatic: true,
+    hasSpeedLines: false,
+    grainIntensity: 0,
   },
 };
 
@@ -158,35 +197,58 @@ function getMood(mood: string): MoodConfig {
   return MOOD[mood] ?? DEFAULT_MOOD;
 }
 
-// ─── Background with Ken Burns ────────────────────────────────────────────────
+// ─── Multi-image background with Ken Burns + cross-dissolve ───────────────────
 
-function Background({ imageSrc, mood }: { imageSrc: string; mood: string }) {
+function MultiBackground({ images, mood }: { images: string[]; mood: string }) {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
   const cfg = getMood(mood);
   const kb = cfg.kenBurns;
 
-  const progress = interpolate(frame, [0, durationInFrames], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
+  const count = Math.max(images.length, 1);
+  const framesPerImage = Math.floor(durationInFrames / count);
+  const rawIndex = Math.floor(frame / Math.max(framesPerImage, 1));
+  const currentIndex = Math.min(rawIndex, count - 1);
+  const currentImageFrame = frame - currentIndex * framesPerImage;
 
+  // Ken Burns per segment
+  const progress = Math.min(currentImageFrame / Math.max(framesPerImage, 1), 1);
   const scale = kb.startScale + (kb.endScale - kb.startScale) * progress;
   const tx = kb.tx[0] + (kb.tx[1] - kb.tx[0]) * progress;
   const ty = kb.ty[0] + (kb.ty[1] - kb.ty[0]) * progress;
 
+  // Cross-dissolve at cut points
+  const dissolveFrames = 6;
+  const isDissolving = currentImageFrame < dissolveFrames && currentIndex > 0;
+  const dissolveOpacity = isDissolving ? currentImageFrame / dissolveFrames : 1;
+
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
-      <Img
-        src={imageSrc}
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          transform: `scale(${scale}) translate(${tx}%, ${ty}%)`,
-          filter: cfg.imageFilter,
-        }}
-      />
+      {/* Previous image (shows during dissolve) */}
+      {isDissolving && currentIndex > 0 && (
+        <AbsoluteFill>
+          <Img
+            src={images[currentIndex - 1]}
+            style={{
+              width: "100%", height: "100%",
+              objectFit: "cover",
+              filter: cfg.imageFilter,
+            }}
+          />
+        </AbsoluteFill>
+      )}
+      {/* Current image */}
+      <AbsoluteFill style={{ opacity: dissolveOpacity }}>
+        <Img
+          src={images[currentIndex]}
+          style={{
+            width: "100%", height: "100%",
+            objectFit: "cover",
+            transform: `scale(${scale}) translate(${tx}%, ${ty}%)`,
+            filter: cfg.imageFilter,
+          }}
+        />
+      </AbsoluteFill>
     </AbsoluteFill>
   );
 }
@@ -195,20 +257,14 @@ function Background({ imageSrc, mood }: { imageSrc: string; mood: string }) {
 
 function ColorGrade({ mood }: { mood: string }) {
   const cfg = getMood(mood);
-
   return (
     <>
-      {/* Full color overlay */}
       {cfg.fullOverlay && (
         <AbsoluteFill style={{ background: cfg.fullOverlay, pointerEvents: "none" }} />
       )}
-
-      {/* Top overlay */}
       {cfg.topOverlay && (
         <AbsoluteFill style={{ background: cfg.topOverlay, pointerEvents: "none" }} />
       )}
-
-      {/* Bottom gradient (readability) */}
       <AbsoluteFill style={{ background: cfg.bottomOverlay, pointerEvents: "none" }} />
     </>
   );
@@ -219,7 +275,6 @@ function ColorGrade({ mood }: { mood: string }) {
 function Vignette({ mood }: { mood: string }) {
   const cfg = getMood(mood);
   const a = cfg.vignetteIntensity;
-
   return (
     <AbsoluteFill
       style={{
@@ -246,22 +301,8 @@ function CinematicBars({ mood }: { mood: string }) {
 
   return (
     <>
-      <AbsoluteFill
-        style={{
-          top: 0, bottom: "auto",
-          height: barH,
-          background: cfg.barColor,
-          pointerEvents: "none",
-        }}
-      />
-      <AbsoluteFill
-        style={{
-          top: "auto", bottom: 0,
-          height: barH,
-          background: cfg.barColor,
-          pointerEvents: "none",
-        }}
-      />
+      <AbsoluteFill style={{ top: 0, bottom: "auto", height: barH, background: cfg.barColor, pointerEvents: "none" }} />
+      <AbsoluteFill style={{ top: "auto", bottom: 0, height: barH, background: cfg.barColor, pointerEvents: "none" }} />
     </>
   );
 }
@@ -279,13 +320,7 @@ function ProgressBar({ mood }: { mood: string }) {
   });
 
   return (
-    <AbsoluteFill
-      style={{
-        top: 0, bottom: "auto",
-        height: 3,
-        pointerEvents: "none",
-      }}
-    >
+    <AbsoluteFill style={{ top: 0, bottom: "auto", height: 3, pointerEvents: "none" }}>
       <div style={{ width: "100%", height: "100%", background: "rgba(255,255,255,0.08)" }}>
         <div
           style={{
@@ -293,11 +328,278 @@ function ProgressBar({ mood }: { mood: string }) {
             height: "100%",
             background: cfg.progressColor,
             boxShadow: `0 0 8px ${cfg.progressColor}`,
-            transition: "none",
           }}
         />
       </div>
     </AbsoluteFill>
+  );
+}
+
+// ─── CAPCUT EFFECT: Film Grain ────────────────────────────────────────────────
+
+function FilmGrain({ mood }: { mood: string }) {
+  const frame = useCurrentFrame();
+  const cfg = getMood(mood);
+
+  if (!cfg.hasFilmGrain) return null;
+
+  // Cycle seed every 2 frames for animated grain
+  const seed = Math.floor(frame / 2) % 60;
+  const filterId = `grain-${seed}`;
+
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none", opacity: cfg.grainIntensity, mixBlendMode: "overlay" as React.CSSProperties["mixBlendMode"] }}>
+      <svg width="100%" height="100%" style={{ position: "absolute", inset: 0 }}>
+        <defs>
+          <filter id={filterId} x="0%" y="0%" width="100%" height="100%">
+            <feTurbulence
+              type="fractalNoise"
+              baseFrequency="0.75"
+              numOctaves="4"
+              seed={seed}
+              stitchTiles="stitch"
+            />
+            <feColorMatrix type="saturate" values="0" />
+          </filter>
+        </defs>
+        <rect width="100%" height="100%" filter={`url(#${filterId})`} />
+      </svg>
+    </AbsoluteFill>
+  );
+}
+
+// ─── CAPCUT EFFECT: Zoom Burst (opening frames) ───────────────────────────────
+
+function ZoomBurst() {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+
+  const burstEnd = Math.floor(fps * 0.27); // ~8 frames at 30fps
+  if (frame > burstEnd) return null;
+
+  const scale = interpolate(frame, [0, burstEnd], [1.35, 1.0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: (t) => 1 - Math.pow(1 - t, 3),
+  });
+
+  const opacity = interpolate(frame, [0, 3, burstEnd], [0.7, 0.15, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+
+  return (
+    <AbsoluteFill
+      style={{
+        transform: `scale(${scale})`,
+        background: "rgba(255,255,255,0.2)",
+        opacity,
+        pointerEvents: "none",
+      }}
+    />
+  );
+}
+
+// ─── CAPCUT EFFECT: Light Leak ────────────────────────────────────────────────
+
+function LightLeak({ atFrame, mood }: { atFrame: number; mood: string }) {
+  const frame = useCurrentFrame();
+  const cfg = getMood(mood);
+
+  const rel = frame - atFrame;
+  const duration = 14;
+  if (rel < 0 || rel > duration) return null;
+
+  const opacity = interpolate(rel, [0, 3, 10, duration], [0, 0.85, 0.5, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+
+  // Sweep position: diagonal corner-to-corner
+  const x = interpolate(rel, [0, duration], [-20, 110], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none", opacity }}>
+      <div
+        style={{
+          position: "absolute",
+          width: "60%",
+          height: "220%",
+          top: "-60%",
+          left: `${x}%`,
+          background: `radial-gradient(ellipse at center, ${cfg.flashColor} 0%, transparent 70%)`,
+          transform: "rotate(-35deg)",
+          filter: "blur(30px)",
+        }}
+      />
+    </AbsoluteFill>
+  );
+}
+
+// ─── CAPCUT EFFECT: Glitch Transition ─────────────────────────────────────────
+
+function GlitchTransition({ atFrame, mood }: { atFrame: number; mood: string }) {
+  const frame = useCurrentFrame();
+  const cfg = getMood(mood);
+
+  if (!cfg.hasGlitch) return null;
+
+  const rel = frame - atFrame;
+  const duration = 8;
+  if (rel < 0 || rel > duration) return null;
+
+  // Generate 6 horizontal glitch strips
+  const strips = Array.from({ length: 6 }, (_, i) => {
+    const offsetX = (random(`glitch-x-${atFrame}-${i}-${rel}`) - 0.5) * 48;
+    const offsetY = (random(`glitch-y-${atFrame}-${i}-${rel}`) - 0.5) * 4;
+    return { offsetX, offsetY, top: (i / 6) * 100, height: 100 / 6 };
+  });
+
+  const masterOpacity = interpolate(rel, [0, 1, 6, duration], [0, 1, 0.7, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none", opacity: masterOpacity }}>
+      {strips.map((s, i) => (
+        <div
+          key={i}
+          style={{
+            position: "absolute",
+            top: `${s.top}%`,
+            left: 0,
+            right: 0,
+            height: `${s.height}%`,
+            transform: `translate(${s.offsetX}px, ${s.offsetY}px)`,
+            background: i % 2 === 0
+              ? "rgba(0,229,255,0.08)"
+              : "rgba(255,0,100,0.06)",
+            mixBlendMode: "screen" as React.CSSProperties["mixBlendMode"],
+          }}
+        />
+      ))}
+      {/* Hard white flash on frame 0 */}
+      {rel === 0 && (
+        <AbsoluteFill style={{ background: "rgba(255,255,255,0.25)" }} />
+      )}
+    </AbsoluteFill>
+  );
+}
+
+// ─── CAPCUT EFFECT: Chromatic Aberration ──────────────────────────────────────
+
+function ChromaticAberration({ atFrame, imageSrc, mood }: { atFrame: number; imageSrc: string; mood: string }) {
+  const frame = useCurrentFrame();
+  const cfg = getMood(mood);
+
+  if (!cfg.hasChromatic) return null;
+
+  const rel = frame - atFrame;
+  const duration = 10;
+  if (rel < 0 || rel > duration) return null;
+
+  const intensity = interpolate(rel, [0, 2, 8, duration], [0, 8, 4, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+
+  const opacity = interpolate(rel, [0, 1, 8, duration], [0, 0.55, 0.3, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+
+  return (
+    <>
+      {/* Red channel shifted right */}
+      <AbsoluteFill
+        style={{
+          pointerEvents: "none",
+          opacity,
+          transform: `translateX(${intensity}px)`,
+          mixBlendMode: "screen" as React.CSSProperties["mixBlendMode"],
+        }}
+      >
+        <Img
+          src={imageSrc}
+          style={{
+            width: "100%", height: "100%",
+            objectFit: "cover",
+            filter: "saturate(0) brightness(2) sepia(1) hue-rotate(-20deg)",
+          }}
+        />
+      </AbsoluteFill>
+      {/* Blue/cyan channel shifted left */}
+      <AbsoluteFill
+        style={{
+          pointerEvents: "none",
+          opacity,
+          transform: `translateX(${-intensity}px)`,
+          mixBlendMode: "screen" as React.CSSProperties["mixBlendMode"],
+        }}
+      >
+        <Img
+          src={imageSrc}
+          style={{
+            width: "100%", height: "100%",
+            objectFit: "cover",
+            filter: "saturate(0) brightness(2) sepia(1) hue-rotate(190deg)",
+          }}
+        />
+      </AbsoluteFill>
+    </>
+  );
+}
+
+// ─── CAPCUT EFFECT: Speed Lines (vibrant/raw) ─────────────────────────────────
+
+function SpeedLines({ mood, atFrame }: { mood: string; atFrame: number }) {
+  const frame = useCurrentFrame();
+  const cfg = getMood(mood);
+
+  if (!cfg.hasSpeedLines) return null;
+
+  const rel = frame - atFrame;
+  if (rel < 0 || rel > 6) return null;
+
+  const opacity = interpolate(rel, [0, 2, 6], [0, 0.6, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+
+  const scale = interpolate(rel, [0, 6], [0.1, 2.5], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+
+  return (
+    <AbsoluteFill
+      style={{
+        pointerEvents: "none",
+        opacity,
+        background: `radial-gradient(ellipse at center, transparent 15%, rgba(255,255,255,0.12) 30%, transparent 70%)`,
+        transform: `scale(${scale})`,
+      }}
+    />
+  );
+}
+
+// ─── CAPCUT EFFECT: Neon Scan Lines ───────────────────────────────────────────
+
+function NeonScanLines({ mood }: { mood: string }) {
+  if (mood !== "neon") return null;
+  return (
+    <AbsoluteFill
+      style={{
+        pointerEvents: "none",
+        opacity: 0.05,
+        backgroundImage: "repeating-linear-gradient(0deg, rgba(0,229,255,0.5) 0px, rgba(0,229,255,0.5) 1px, transparent 1px, transparent 4px)",
+        backgroundSize: "100% 4px",
+      }}
+    />
   );
 }
 
@@ -310,12 +612,10 @@ function FlashTransition({ atFrame, mood }: { atFrame: number; mood: string }) {
   const rel = frame - atFrame;
   if (rel < -2 || rel > 8) return null;
 
-  const opacity = interpolate(
-    rel,
-    [-2, 0, 2, 8],
-    [0, 1, 0.6, 0],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
-  );
+  const opacity = interpolate(rel, [-2, 0, 2, 8], [0, 1, 0.6, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
 
   return (
     <AbsoluteFill
@@ -348,7 +648,7 @@ function HookText({ hook, mood }: { hook: string; mood: string }) {
   if (frame > fadeEnd) return null;
 
   const words = hook.split(" ").filter(Boolean);
-  const wordDelay = 4; // frames between words
+  const wordDelay = 4;
 
   return (
     <AbsoluteFill
@@ -408,7 +708,7 @@ function HookText({ hook, mood }: { hook: string; mood: string }) {
   );
 }
 
-// ─── Caption card (TikTok pill style) ─────────────────────────────────────────
+// ─── Captions (CapCut-style word pop with highlight) ──────────────────────────
 
 function CaptionWord({
   word,
@@ -495,7 +795,6 @@ function Captions({
   if (frame < startFrame) return null;
 
   const safeCaptions = captions.length > 0 ? captions : ["Watch", "this", "space"];
-  // Guard against division-by-zero
   const captionDuration = Math.max(
     Math.floor((durationInFrames - startFrame) / safeCaptions.length),
     1
@@ -516,14 +815,12 @@ function Captions({
   const captionStartFrame = startFrame + currentIndex * captionDuration;
   const wordDelay = Math.max(Math.floor(fps / 8), 2);
 
-  // Slide-up transition when caption changes
   const captionRelFrame = frame - captionStartFrame;
   const slideY = interpolate(captionRelFrame, [0, 6], [18, 0], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
 
-  // Highlight the first word of each new caption
   const highlightIndex = captionRelFrame < fps * 0.4 ? 0 : -1;
 
   return (
@@ -548,11 +845,6 @@ function Captions({
           justifyContent: "center",
           alignItems: "center",
           maxWidth: "90%",
-          gap: "2px 0px",
-          border: mood === "neon" ? `1px solid rgba(0,229,255,0.2)` : "none",
-          boxShadow: mood === "neon"
-            ? `0 0 20px rgba(0,229,255,0.15), inset 0 0 20px rgba(0,0,0,0.4)`
-            : "0 4px 24px rgba(0,0,0,0.4)",
         }}
       >
         {words.map((word, i) => (
@@ -569,134 +861,192 @@ function Captions({
   );
 }
 
-// ─── Platform watermark ───────────────────────────────────────────────────────
+// ─── CTA card (last ~1.5s) ────────────────────────────────────────────────────
 
-function PlatformWatermark({ platform, mood }: { platform: string; mood: string }) {
+function CTACard({ cta, mood }: { cta?: string; mood: string }) {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, durationInFrames } = useVideoConfig();
   const cfg = getMood(mood);
 
-  const LABELS: Record<string, string> = {
-    tiktok: "TikTok",
-    reels: "Reels",
-    shorts: "Shorts",
-    pinterest: "Pinterest",
-    x: "X",
-  };
+  if (!cta) return null;
 
-  const opacity = interpolate(frame, [0, fps * 0.5], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
+  const showFrom = durationInFrames - Math.floor(fps * 1.5);
+  const rel = frame - showFrom;
+
+  if (rel < 0) return null;
+
+  const opacity = spring({
+    frame: rel,
+    fps,
+    config: { damping: 18, stiffness: 200 },
+    from: 0,
+    to: 1,
+  });
+
+  const scale = spring({
+    frame: rel,
+    fps,
+    config: { damping: 14, stiffness: 280 },
+    from: 0.85,
+    to: 1,
   });
 
   return (
     <AbsoluteFill
       style={{
-        justifyContent: "flex-start",
-        alignItems: "flex-start",
-        padding: 36,
-        paddingTop: 48,
-        opacity,
+        justifyContent: "flex-end",
+        alignItems: "center",
+        paddingBottom: 52,
         pointerEvents: "none",
       }}
     >
       <div
         style={{
-          marginLeft: "auto",
-          background: "rgba(0,0,0,0.4)",
-          backdropFilter: "blur(8px)",
-          border: `1px solid rgba(255,255,255,0.1)`,
-          borderRadius: 10,
-          padding: "6px 16px",
+          opacity,
+          transform: `scale(${scale})`,
+          background: `${cfg.captionPillBg}`,
+          border: `2px solid ${cfg.progressColor}44`,
+          borderRadius: 24,
+          paddingTop: 14,
+          paddingBottom: 14,
+          paddingLeft: 28,
+          paddingRight: 28,
+          textAlign: "center",
+          maxWidth: "80%",
         }}
       >
-        <span
+        <div
           style={{
             color: cfg.progressColor,
-            fontSize: 22,
-            fontWeight: 600,
+            fontSize: 38,
+            fontWeight: 900,
             fontFamily: "Inter, system-ui, sans-serif",
-            letterSpacing: "0.04em",
+            letterSpacing: "-0.02em",
+            lineHeight: 1.25,
+            textShadow: `0 0 24px ${cfg.progressColor}88`,
           }}
         >
-          {LABELS[platform] ?? platform}
-        </span>
+          {cta}
+        </div>
       </div>
     </AbsoluteFill>
   );
 }
 
-// ─── Neon scan line effect ────────────────────────────────────────────────────
+// ─── Main composition ─────────────────────────────────────────────────────────
 
-function NeonScanLines({ mood }: { mood: string }) {
-  if (mood !== "neon") return null;
+// ─── Sound effects ────────────────────────────────────────────────────────────
+
+function SoundEffect({ src, atFrame, volume = 1 }: { src: string; atFrame: number; volume?: number }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  // Only mount when we're at or past the trigger frame (within 1s window)
+  if (frame < atFrame || frame > atFrame + fps) return null;
   return (
-    <AbsoluteFill
-      style={{
-        backgroundImage:
-          "repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.07) 3px, rgba(0,0,0,0.07) 4px)",
-        pointerEvents: "none",
-        mixBlendMode: "multiply",
-      }}
+    <Audio
+      src={src}
+      startFrom={0}
+      volume={volume}
     />
   );
 }
 
-// ─── Root composition ─────────────────────────────────────────────────────────
+// ─── Main composition ─────────────────────────────────────────────────────────
 
-export const SocialReel: React.FC<SocialReelProps> = ({
-  script,
-  captions,
-  imageSrc,
-  platform,
-  mood = "cinematic",
-  hook,
-}) => {
-  const { fps } = useVideoConfig();
+export function SocialReel(props: SocialReelProps) {
+  const { mood, hook, captions, cta, style } = props;
+  const { fps, durationInFrames } = useVideoConfig();
 
-  const validMood = MOOD[mood] ? mood : "cinematic";
-  const hookDuration = fps * 3;
-  const captionStart = hookDuration;
+  // Normalize image sources (backward compat)
+  const images: string[] = props.imageSrcs?.length
+    ? props.imageSrcs
+    : props.imageSrc
+      ? [props.imageSrc]
+      : [""];
+
+  const count = Math.max(images.length, 1);
+  const framesPerImage = Math.floor(durationInFrames / count);
+
+  // Cut points: where each new image starts (skip index 0 = zoom burst only)
+  const cutPoints = Array.from({ length: count }, (_, i) => i * framesPerImage);
+
+  // Hook→captions transition frame
+  const hookEndFrame = fps * 3;
+
+  // Primary image for chromatic aberration (first image)
+  const primaryImage = images[0] ?? "";
+
+  // Resolve transition type from style
+  const transitionType = style?.transition ?? "cut";
+  const useDissolve = transitionType === "cross-dissolve" || transitionType === "fade";
+
+  // Per-mood SFX volumes
+  const sfxVol = { cinematic: 0.5, "dark-moody": 0.7, vibrant: 0.9, minimal: 0.25, raw: 0.6, neon: 0.8 };
+  const vol = sfxVol[mood as keyof typeof sfxVol] ?? 0.6;
 
   return (
-    <AbsoluteFill style={{ backgroundColor: "#000000" }}>
+    <AbsoluteFill style={{ background: "#000", fontFamily: "Inter, system-ui, sans-serif" }}>
+      {/* Layer 0: Background images (Ken Burns + dissolve) */}
+      <MultiBackground images={images} mood={mood} />
 
-      {/* 1 — Background (Ken Burns) */}
-      <Background imageSrc={imageSrc} mood={validMood} />
+      {/* Layer 1: Color grade overlays */}
+      <ColorGrade mood={mood} />
 
-      {/* 2 — Color grade overlays */}
-      <ColorGrade mood={validMood} />
+      {/* Layer 2: Vignette */}
+      <Vignette mood={mood} />
 
-      {/* 3 — Vignette */}
-      <Vignette mood={validMood} />
+      {/* Layer 3: Film grain (CapCut Pro effect) */}
+      <FilmGrain mood={mood} />
 
-      {/* 4 — Neon scan lines */}
-      <NeonScanLines mood={validMood} />
+      {/* Layer 4: Neon scan lines */}
+      <NeonScanLines mood={mood} />
 
-      {/* 5 — Cinematic letterbox bars */}
-      <CinematicBars mood={validMood} />
+      {/* Layer 5: Cinematic letterbox bars */}
+      <CinematicBars mood={mood} />
 
-      {/* 6 — Hook (first 3 seconds) */}
-      <Sequence from={0} durationInFrames={hookDuration + fps}>
-        <HookText hook={hook || script.slice(0, 40)} mood={validMood} />
-      </Sequence>
+      {/* Layer 6: Cut-point transitions (per image) */}
+      {cutPoints.slice(1).map((cutFrame) => (
+        <React.Fragment key={cutFrame}>
+          {useDissolve ? null : <FlashTransition atFrame={cutFrame} mood={mood} />}
+          <LightLeak atFrame={cutFrame} mood={mood} />
+          <GlitchTransition atFrame={cutFrame} mood={mood} />
+          <ChromaticAberration atFrame={cutFrame} imageSrc={primaryImage} mood={mood} />
+          {/* Whoosh SFX at each image cut */}
+          <SoundEffect src={staticFile("audio/whoosh.wav")} atFrame={cutFrame - 2} volume={vol * 0.8} />
+          {/* Impact SFX 3 frames after cut */}
+          <SoundEffect src={staticFile("audio/impact.wav")} atFrame={cutFrame + 3} volume={vol * 0.6} />
+          {/* Glitch SFX for glitch moods */}
+          {(mood === "neon" || mood === "dark-moody") && (
+            <SoundEffect src={staticFile("audio/glitch.wav")} atFrame={cutFrame} volume={vol * 0.9} />
+          )}
+        </React.Fragment>
+      ))}
 
-      {/* 7 — Flash transition at hook→captions cut */}
-      <FlashTransition atFrame={captionStart} mood={validMood} />
+      {/* Layer 7: Hook→captions transition */}
+      <FlashTransition atFrame={hookEndFrame} mood={mood} />
+      <SpeedLines mood={mood} atFrame={hookEndFrame} />
+      {/* SFX at hook→captions cut */}
+      <SoundEffect src={staticFile("audio/whoosh.wav")} atFrame={hookEndFrame - 2} volume={vol} />
+      {(mood === "vibrant" || mood === "raw") && (
+        <SoundEffect src={staticFile("audio/zoom.wav")} atFrame={0} volume={vol * 0.7} />
+      )}
 
-      {/* 8 — Captions */}
-      <Captions
-        captions={captions.length > 0 ? captions : script.split(" ").slice(0, 20)}
-        startFrame={captionStart}
-        mood={validMood}
-      />
+      {/* Layer 8: Zoom burst on open */}
+      <ZoomBurst />
+      {/* Impact on open */}
+      <SoundEffect src={staticFile("audio/impact.wav")} atFrame={0} volume={vol * 0.5} />
 
-      {/* 9 — Progress bar */}
-      <ProgressBar mood={validMood} />
+      {/* Layer 9: Progress bar */}
+      <ProgressBar mood={mood} />
 
-      {/* 10 — Platform watermark */}
-      <PlatformWatermark platform={platform} mood={validMood} />
+      {/* Layer 10: Hook text */}
+      <HookText hook={hook} mood={mood} />
 
+      {/* Layer 11: Captions */}
+      <Captions captions={captions} startFrame={hookEndFrame} mood={mood} />
+
+      {/* Layer 12: CTA card */}
+      <CTACard cta={cta} mood={mood} />
     </AbsoluteFill>
   );
-};
+}

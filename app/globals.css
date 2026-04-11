@@ -1,63 +1,150 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap");
 @import "tailwindcss";
 
 :root {
-  --background: #09090b;
-  --surface: #111113;
-  --accent: #a78bfa;
-  --font-inter: "Inter", system-ui, sans-serif;
+  /* Surfaces — neutral dark, no blue tint */
+  --bg:        #080808;
+  --s1:        #0f0f0f;
+  --s2:        #161616;
+  --s3:        #1e1e1e;
+
+  /* Borders */
+  --b0:        rgba(255,255,255,0.04);
+  --b1:        rgba(255,255,255,0.08);
+  --b2:        rgba(255,255,255,0.14);
+  --b3:        rgba(255,255,255,0.24);
+
+  /* Text */
+  --t1:        #f0f0f0;
+  --t2:        #888888;
+  --t3:        #444444;
+
+  /* Accents — blue/cyan only, no purple */
+  --blue:      #3b82f6;
+  --blue-l:    #60a5fa;
+  --blue-dim:  rgba(59,130,246,0.1);
+  --blue-glow: rgba(59,130,246,0.2);
+
+  --green:     #22c55e;
+  --red:       #ef4444;
+  --amber:     #f59e0b;
+
+  /* Glass */
+  --glass:     rgba(255,255,255,0.025);
+  --glass-up:  rgba(255,255,255,0.05);
+
+  /* Legacy compat aliases (wont show purple) */
+  --void: var(--bg);
+  --rim:  var(--b1);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-surface: var(--surface);
-  --color-accent: var(--accent);
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html {
-  color-scheme: dark;
-}
-
+*,:before,:after { box-sizing: border-box; margin: 0; padding: 0; }
+html { color-scheme: dark; scroll-behavior: smooth; }
 body {
-  background-color: #09090b;
-  color: #ffffff;
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--t1);
+  font-family: var(--font-inter, "Inter"), system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* ── Background canvas ─────────────────────────────────── */
+.bg-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.bg-canvas::before {
+  content: '';
+  position: absolute;
+  width: 900px; height: 900px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(59,130,246,0.045) 0%, transparent 65%);
+  top: -350px; left: -250px;
+  animation: orb-a 28s ease-in-out infinite;
+}
+.bg-canvas::after {
+  content: '';
+  position: absolute;
+  width: 700px; height: 700px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(34,197,94,0.025) 0%, transparent 65%);
+  bottom: -250px; right: -200px;
+  animation: orb-b 35s ease-in-out infinite;
+}
+@keyframes orb-a {
+  0%,100% { transform: translate(0,0) scale(1); }
+  50%      { transform: translate(100px,70px) scale(1.08); }
+}
+@keyframes orb-b {
+  0%,100% { transform: translate(0,0) scale(1); }
+  50%      { transform: translate(-80px,-90px) scale(1.1); }
 }
 
-::-webkit-scrollbar-track {
-  background: #09090b;
+/* ── Noise texture ─────────────────────────────────────── */
+.noise-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.014;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
 }
 
-::-webkit-scrollbar-thumb {
-  background: #3f3f46;
-  border-radius: 3px;
+/* ── Glass ─────────────────────────────────────────────── */
+.glass    { background: var(--glass);    border: 1px solid var(--b1); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.glass-up { background: var(--glass-up); border: 1px solid var(--b2); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+
+/* ── Glow utilities ────────────────────────────────────── */
+.glow-blue  { box-shadow: 0 0 32px var(--blue-glow), 0 0 64px rgba(59,130,246,0.08); }
+.glow-green { box-shadow: 0 0 28px rgba(34,197,94,0.2); }
+
+/* ── Text ──────────────────────────────────────────────── */
+.text-gradient-blue {
+  background: linear-gradient(135deg, #bfdbfe 0%, #93c5fd 40%, #60a5fa 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.text-gradient-white {
+  background: linear-gradient(180deg, #ffffff 0%, #a1a1aa 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+/* ── Scrollbar ─────────────────────────────────────────── */
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.09); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+
+/* ── Selection ─────────────────────────────────────────── */
+::selection { background: rgba(59,130,246,0.28); color: #fff; }
+
+/* ── Focus ─────────────────────────────────────────────── */
+:focus-visible { outline: 2px solid var(--blue-l); outline-offset: 2px; }
+
+/* ── Animations ────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+@keyframes pulse-ring {
+  0%,100% { opacity: 0.5; transform: scale(0.9); }
+  50%      { opacity: 1;   transform: scale(1.1); }
+}
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Selection */
-::selection {
-  background: rgba(167, 139, 250, 0.3);
-  color: #ffffff;
-}
-
-/* Focus ring */
-:focus-visible {
-  outline: 2px solid #a78bfa;
-  outline-offset: 2px;
-}
+.animate-shimmer   { background-size: 200% auto; animation: shimmer 2.2s linear infinite; }
+.animate-pulse-dot { animation: pulse-ring 2s ease-in-out infinite; }
+.animate-spin-slow { animation: spin-slow 8s linear infinite; }
+.animate-fade-up   { animation: fade-up 0.35s ease both; }
