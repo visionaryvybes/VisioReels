@@ -199,6 +199,9 @@ export default function VisioReelsPage() {
   const [generateError, setGenerateError] = useState<string>("");
   const [script, setScript] = useState<VideoScript | null>(null);
 
+  // Revoke old blob URL when a new one is set (prevents memory leak)
+  const downloadUrlRef = useRef<string>("");
+
   // Render
   const [isRendering, setIsRendering] = useState(false);
   const [renderError, setRenderError] = useState<string>("");
@@ -351,7 +354,10 @@ export default function VisioReelsPage() {
       }
 
       const blob = await res.blob();
+      // Revoke previous blob URL before creating new one
+      if (downloadUrlRef.current) URL.revokeObjectURL(downloadUrlRef.current);
       const url = URL.createObjectURL(blob);
+      downloadUrlRef.current = url;
       setDownloadUrl(url);
       setRenderProgress(100);
       setCurrentStep(7);
