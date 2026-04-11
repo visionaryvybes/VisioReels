@@ -41,12 +41,10 @@ body {
   min-height: 100vh;
 }
 
-/* ── Scrollbar ───────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 4px; }
 
-/* ── Layout ──────────────────────────────── */
 .shell {
   display: grid;
   grid-template-columns: 260px 1fr;
@@ -54,7 +52,6 @@ body {
   min-height: 100vh;
 }
 
-/* ── Top bar ─────────────────────────────── */
 .topbar {
   grid-column: 1 / -1;
   display: flex; align-items: center; justify-content: space-between;
@@ -82,16 +79,16 @@ body {
 }
 .pulse-dot {
   width: 7px; height: 7px; border-radius: 50%;
-  background: var(--green);
-  animation: glow 2s ease infinite;
+  background: var(--t3);
+  transition: background .4s;
 }
+.pulse-dot.on { background: var(--green); animation: glow 2s ease infinite; }
 @keyframes glow {
   0%,100% { box-shadow: 0 0 0 0 #34d39955; }
   50%      { box-shadow: 0 0 0 5px #34d39900; }
 }
 .topbar-time { font-size: 12px; color: var(--t3); font-variant-numeric: tabular-nums; }
 
-/* ── Sidebar ─────────────────────────────── */
 .sidebar {
   background: var(--bg1);
   border-right: 1px solid var(--line);
@@ -106,11 +103,11 @@ body {
   padding: 8px 10px; border-radius: var(--r2); cursor: pointer;
   color: var(--t2); font-size: 13px; font-weight: 500;
   transition: all .15s;
-  text-decoration: none;
+  text-decoration: none; user-select: none;
 }
 .nav-item:hover { background: var(--bg2); color: var(--t1); }
 .nav-item.active { background: var(--bg3); color: var(--t1); }
-.nav-icon { font-size: 15px; width: 20px; text-align: center; }
+.nav-icon { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; }
 .nav-badge {
   margin-left: auto; font-size: 10px; font-weight: 700;
   padding: 2px 7px; border-radius: 99px;
@@ -134,14 +131,12 @@ body {
 .sm-stat-v { font-size: 13px; font-weight: 700; color: var(--t1); }
 .sm-stat-l { font-size: 10px; color: var(--t3); margin-top: 1px; }
 
-/* ── Main content ────────────────────────── */
 .main { overflow-y: auto; padding: 32px; }
 
-/* panels */
 .panel { display: none; }
 .panel.active { display: block; }
 
-/* ── Overview panel ──────────────────────── */
+/* overview */
 .big-progress { margin-bottom: 32px; }
 .bp-row { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 14px; }
 .bp-pct { font-size: 72px; font-weight: 800; letter-spacing: -4px; line-height: 1; background: var(--blue-g); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
@@ -157,7 +152,6 @@ body {
 .ms.on .ms-d { background: var(--blue); box-shadow: 0 0 6px #4f8ef766; }
 .ms.on { color: var(--t2); }
 
-/* stat cards */
 .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 32px; }
 .stat-card {
   background: var(--bg1); border: 1px solid var(--line);
@@ -179,7 +173,6 @@ body {
 .stat-card.dim   .stat-value { color: var(--t3); }
 .stat-sub { font-size: 11px; color: var(--t3); margin-top: 6px; }
 
-/* tasks */
 .section-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .section-title { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--t3); }
 
@@ -208,7 +201,7 @@ body {
 .chip.run   { background: var(--blue-d);  color: var(--blue); }
 .chip.wait  { background: var(--bg3);     color: var(--t3); }
 
-/* ── File tree panel ─────────────────────── */
+/* files */
 .file-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .file-group {
   background: var(--bg1); border: 1px solid var(--line);
@@ -228,7 +221,7 @@ body {
 .file-line.busy { color: var(--amber); }
 .file-line .fi { font-size: 12px; }
 
-/* ── Chat panel ──────────────────────────── */
+/* chat */
 .chat-layout {
   display: grid;
   grid-template-rows: auto 1fr auto;
@@ -251,8 +244,10 @@ body {
 }
 .chat-name { font-size: 14px; font-weight: 600; }
 .chat-status { font-size: 12px; color: var(--t3); margin-top: 1px; }
-.chat-online { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--green); margin-left: auto; }
-.chat-online-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+.chat-online { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--t3); margin-left: auto; transition: color .3s; }
+.chat-online-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--t3); transition: background .3s; }
+.chat-online.on { color: var(--green); }
+.chat-online.on .chat-online-dot { background: var(--green); }
 
 .chat-messages {
   overflow-y: auto; padding: 20px;
@@ -304,7 +299,7 @@ body {
 .chat-send:hover { opacity: .85; }
 .chat-send:disabled { opacity: .4; cursor: not-allowed; }
 
-/* ── Activity panel ──────────────────────── */
+/* activity */
 .activity-grid { display: grid; grid-template-columns: 1fr 280px; gap: 16px; }
 .activity-feed {
   background: var(--bg1); border: 1px solid var(--line);
@@ -346,28 +341,45 @@ body {
 .sys-val.amber { color: var(--amber); }
 .sys-val.blue  { color: var(--blue); }
 .mini-bar { height: 3px; background: var(--bg3); border-radius: 99px; overflow: hidden; margin-top: 6px; }
-.mini-bar-fill { height: 100%; border-radius: 99px; background: var(--blue-g); }
+.mini-bar-fill { height: 100%; border-radius: 99px; background: var(--blue-g); transition: width .6s; }
 
-/* ── Animations ──────────────────────────── */
+/* install */
+.step-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-top: 16px; }
+.step-card {
+  background: var(--bg1); border: 1px solid var(--line);
+  border-radius: var(--r2); padding: 14px;
+  text-align: center;
+}
+.step-card.done { border-color: var(--green); background: var(--green-d); }
+.step-card.active { border-color: var(--blue); background: var(--blue-d); }
+.step-num { font-size: 22px; font-weight: 800; color: var(--t3); margin-bottom: 6px; }
+.step-card.done .step-num { color: var(--green); }
+.step-card.active .step-num { color: var(--blue); }
+.step-label { font-size: 12px; font-weight: 600; color: var(--t2); margin-bottom: 4px; }
+.step-status { font-size: 11px; color: var(--t3); }
+.step-card.done .step-status { color: var(--green); }
+.step-card.active .step-status { color: var(--blue); }
+
+/* animations */
 .spin { display: inline-block; animation: rotate .8s linear infinite; }
 @keyframes rotate { to { transform: rotate(360deg); } }
 @keyframes fadein { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
 .msg { animation: fadein .2s ease; }
 
-/* ── Responsive grid fix for smaller views ── */
 @media (max-width: 900px) {
   .shell { grid-template-columns: 1fr; }
   .sidebar { display: none; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .file-grid  { grid-template-columns: 1fr; }
   .activity-grid { grid-template-columns: 1fr; }
+  .step-grid { grid-template-columns: repeat(2,1fr); }
 }
 </style>
 </head>
 <body>
 <div class="shell">
 
-  <!-- ── Topbar ────────────────────────────── -->
+  <!-- Topbar -->
   <header class="topbar">
     <div class="brand">
       <div class="brand-mark">🎬</div>
@@ -375,80 +387,80 @@ body {
     </div>
     <div class="topbar-right">
       <div class="status-pill">
-        <div class="pulse-dot"></div>
+        <div class="pulse-dot" id="pulse"></div>
         <span id="ollama-status">Checking Ollama…</span>
       </div>
       <div class="topbar-time" id="clock">--:--:--</div>
     </div>
   </header>
 
-  <!-- ── Sidebar ───────────────────────────── -->
+  <!-- Sidebar -->
   <nav class="sidebar">
     <div class="nav-section">
       <div class="nav-label">Build</div>
-      <a class="nav-item active" onclick="show('overview')">
+      <div class="nav-item" onclick="show('overview',this)">
         <span class="nav-icon">◈</span> Overview
-        <span class="nav-badge blue">82%</span>
-      </a>
-      <a class="nav-item" onclick="show('files')">
+        <span class="nav-badge blue">100%</span>
+      </div>
+      <div class="nav-item" onclick="show('files',this)">
         <span class="nav-icon">⊞</span> Files
         <span class="nav-badge green">19/19</span>
-      </a>
-      <a class="nav-item" onclick="show('activity')">
+      </div>
+      <div class="nav-item" onclick="show('activity',this)">
         <span class="nav-icon">⚡</span> Activity
         <span class="nav-badge amber">Live</span>
-      </a>
+      </div>
     </div>
     <div class="nav-section">
       <div class="nav-label">Gemma 4</div>
-      <a class="nav-item" onclick="show('chat')">
+      <div class="nav-item" onclick="show('chat',this)">
         <span class="nav-icon">◉</span> Chat
-      </a>
-      <a class="nav-item" onclick="show('model')">
+        <span class="nav-badge green" id="chat-nav-badge" style="display:none">Live</span>
+      </div>
+      <div class="nav-item" onclick="show('model',this)">
         <span class="nav-icon">◎</span> Model Info
-      </a>
-      <a class="nav-item active" onclick="show('install')" id="nav-install">
+      </div>
+      <div class="nav-item active" id="nav-install" onclick="show('install',this)">
         <span class="nav-icon">⬇</span> Install
-        <span class="nav-badge amber" id="install-nav-badge">Action</span>
-      </a>
+        <span class="nav-badge green" id="install-nav-badge">✓ Done</span>
+      </div>
     </div>
     <div class="nav-section" style="margin-top:auto">
       <div class="sidebar-model">
         <div class="sm-label">Active Model</div>
         <div class="sm-name">visio-gemma</div>
-        <div class="sm-path">~/.ollama/models/blobs/</div>
+        <div class="sm-path">/Users/mac/.ollama/models/blobs/</div>
         <div class="sm-row">
           <div class="sm-stat"><div class="sm-stat-v" style="color:var(--green)">E4B</div><div class="sm-stat-l">Variant</div></div>
-          <div class="sm-stat"><div class="sm-stat-v" style="color:var(--blue)">~5GB</div><div class="sm-stat-l">Size</div></div>
+          <div class="sm-stat"><div class="sm-stat-v" style="color:var(--blue)">9.6GB</div><div class="sm-stat-l">Size</div></div>
           <div class="sm-stat"><div class="sm-stat-v" style="color:var(--amber)">128K</div><div class="sm-stat-l">Context</div></div>
         </div>
       </div>
     </div>
   </nav>
 
-  <!-- ── Main ──────────────────────────────── -->
+  <!-- Main -->
   <main class="main">
 
     <!-- OVERVIEW -->
     <div class="panel" id="p-overview">
-
       <div class="big-progress">
         <div class="bp-row">
-          <div class="bp-pct">82</div>
+          <div class="bp-pct" id="pct-num">100</div>
           <div class="bp-meta">
-            <div class="bp-meta-primary">Files complete · Deploying</div>
-            <div class="bp-meta-sub">Ollama installing · Vercel pending</div>
+            <div class="bp-meta-primary">All systems ready</div>
+            <div class="bp-meta-sub" id="bp-sub">Gemma 4 · visio-gemma · localhost:3000</div>
           </div>
         </div>
         <div class="track">
-          <div class="track-fill" style="width:82%"></div>
+          <div class="track-fill" id="track-fill" style="width:100%"></div>
         </div>
         <div class="milestones">
           <div class="ms on"><div class="ms-d"></div>Setup</div>
           <div class="ms on"><div class="ms-d"></div>Deps</div>
           <div class="ms on"><div class="ms-d"></div>Files</div>
-          <div class="ms"><div class="ms-d"></div>Gemma</div>
-          <div class="ms"><div class="ms-d"></div>Deploy</div>
+          <div class="ms on" id="ms-gemma"><div class="ms-d"></div>Gemma</div>
+          <div class="ms on" id="ms-deploy"><div class="ms-d"></div>Deploy</div>
         </div>
       </div>
 
@@ -458,20 +470,20 @@ body {
           <div class="stat-value">19</div>
           <div class="stat-sub">of 19 — complete</div>
         </div>
-        <div class="stat-card amber">
+        <div class="stat-card green">
           <div class="stat-label">Ollama</div>
           <div class="stat-value" id="ollama-stat">…</div>
-          <div class="stat-sub">brew install</div>
+          <div class="stat-sub" id="ollama-sub">localhost:11434</div>
+        </div>
+        <div class="stat-card green">
+          <div class="stat-label">Gemma 4</div>
+          <div class="stat-value" id="gemma-stat">Ready</div>
+          <div class="stat-sub">visio-gemma · 9.6GB</div>
         </div>
         <div class="stat-card blue">
-          <div class="stat-label">Gemma 4</div>
-          <div class="stat-value" id="gemma-stat">Pending</div>
-          <div class="stat-sub">gemma4:e4b · 5GB</div>
-        </div>
-        <div class="stat-card dim">
-          <div class="stat-label">Deploy</div>
-          <div class="stat-value" id="deploy-stat">Soon</div>
-          <div class="stat-sub">Vercel · auto</div>
+          <div class="stat-label">App</div>
+          <div class="stat-value" id="deploy-stat">Live</div>
+          <div class="stat-sub">localhost:3000</div>
         </div>
       </div>
 
@@ -490,17 +502,37 @@ body {
           <div class="chip done">Done</div>
         </div>
         <div class="task-row">
-          <div class="task-icon run"><span class="spin">↻</span></div>
-          <div><div class="task-title">Install Ollama + Gemma 4 E4B</div><div class="task-sub">brew install → pull gemma4:e4b → create visio-gemma from Modelfile</div></div>
-          <div class="chip run"><span class="spin">↻</span> Running</div>
+          <div class="task-icon done">✓</div>
+          <div><div class="task-title">Ollama + Gemma 4 E4B Installed</div><div class="task-sub">gemma4:e4b pulled · visio-gemma created from Modelfile · server running at localhost:11434</div></div>
+          <div class="chip done">Done</div>
         </div>
         <div class="task-row">
-          <div class="task-icon run"><span class="spin">↻</span></div>
-          <div><div class="task-title">Deploy to Vercel</div><div class="task-sub">git init → push visionaryvybes/VisioReels → npx vercel --prod --yes</div></div>
-          <div class="chip run"><span class="spin">↻</span> Running</div>
+          <div class="task-icon done">✓</div>
+          <div>
+            <div class="task-title">App Running</div>
+            <div class="task-sub">Next.js dev server at localhost:3000 — open the app, upload a Midjourney image, generate + render</div>
+          </div>
+          <div class="chip done">Done</div>
         </div>
       </div>
 
+      <div style="background:var(--bg1);border:1px solid var(--line);border-radius:var(--r2);padding:20px;margin-top:4px">
+        <div class="section-title" style="margin-bottom:12px">Next Steps</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;gap:12px;align-items:flex-start">
+            <div style="width:22px;height:22px;border-radius:6px;background:var(--blue-d);color:var(--blue);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">1</div>
+            <div style="font-size:13px;color:var(--t2)">Open <a href="http://localhost:3000" target="_blank" style="color:var(--blue);text-decoration:none">localhost:3000</a> — upload a Midjourney image and hit <strong style="color:var(--t1)">Generate Script</strong></div>
+          </div>
+          <div style="display:flex;gap:12px;align-items:flex-start">
+            <div style="width:22px;height:22px;border-radius:6px;background:var(--blue-d);color:var(--blue);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">2</div>
+            <div style="font-size:13px;color:var(--t2)">Review the script from <strong style="color:var(--t1)">visio-gemma</strong>, then hit <strong style="color:var(--t1)">Render MP4</strong></div>
+          </div>
+          <div style="display:flex;gap:12px;align-items:flex-start">
+            <div style="width:22px;height:22px;border-radius:6px;background:var(--blue-d);color:var(--blue);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">3</div>
+            <div style="font-size:13px;color:var(--t2)">Download the MP4 and post to TikTok / Instagram / Pinterest / X</div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- FILES -->
@@ -564,89 +596,95 @@ body {
           <div class="sys-card">
             <div class="sys-card-title">Ollama</div>
             <div class="sys-row"><span class="sys-key">Port</span><span class="sys-val blue">11434</span></div>
-            <div class="sys-row"><span class="sys-key">Status</span><span class="sys-val amber" id="ol-status-sys">Offline</span></div>
-            <div class="sys-row"><span class="sys-key">Model</span><span class="sys-val" id="ol-model-sys">—</span></div>
+            <div class="sys-row"><span class="sys-key">Status</span><span class="sys-val" id="ol-status-sys">Checking…</span></div>
+            <div class="sys-row"><span class="sys-key">Models</span><span class="sys-val" id="ol-model-sys">—</span></div>
           </div>
           <div class="sys-card">
             <div class="sys-card-title">Model Location</div>
             <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--t3);line-height:1.8">
-              ~/.ollama/<br>└── models/<br>&nbsp;&nbsp;&nbsp;&nbsp;└── blobs/
+              /Users/mac/.ollama/<br>└── models/<br>&nbsp;&nbsp;&nbsp;&nbsp;├── blobs/ (weights)<br>&nbsp;&nbsp;&nbsp;&nbsp;└── manifests/
             </div>
-            <div class="mini-bar" style="margin-top:12px"><div class="mini-bar-fill" style="width:0%" id="ram-bar"></div></div>
+            <div class="mini-bar" style="margin-top:12px"><div class="mini-bar-fill" style="width:53%" id="ram-bar"></div></div>
             <div style="display:flex;justify-content:space-between;margin-top:4px">
-              <span style="font-size:10px;color:var(--t3)">RAM used</span>
-              <span style="font-size:10px;color:var(--t3)" id="ram-text">—</span>
+              <span style="font-size:10px;color:var(--t3)">RAM headroom</span>
+              <span style="font-size:10px;color:var(--green)">~9.6GB free</span>
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- INSTALL TERMINAL -->
+    <!-- INSTALL -->
     <div class="panel active" id="p-install">
-      <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">
+      <div style="margin-bottom:20px;display:flex;align-items:center;justify-content:space-between">
         <div>
           <div class="section-title">Gemma 4 Installation</div>
-          <div style="font-size:12px;color:var(--t3);margin-top:4px">Live terminal output — streaming from localhost:3000</div>
+          <div style="font-size:12px;color:var(--t3);margin-top:4px">Live terminal — streaming from /tmp/visio-install.log</div>
         </div>
-        <button onclick="startInstall()" id="install-btn"
-          style="background:var(--blue-g);border:none;color:#fff;font-size:12px;font-weight:600;
-                 padding:8px 18px;border-radius:var(--r2);cursor:pointer;font-family:'Inter',sans-serif">
-          ▶ Run Install
-        </button>
+        <div style="display:flex;gap:8px">
+          <button onclick="startInstall()" id="install-btn"
+            style="background:var(--blue-g);border:none;color:#fff;font-size:12px;font-weight:600;
+                   padding:8px 18px;border-radius:var(--r2);cursor:pointer;font-family:'Inter',sans-serif">
+            ▶ Re-run Install
+          </button>
+        </div>
       </div>
 
-      <!-- Terminal window -->
+      <!-- Success banner shown when Ollama is online -->
+      <div id="install-success" style="display:none;background:var(--green-d);border:1px solid var(--green);border-radius:var(--r2);padding:16px 20px;margin-bottom:16px;display:flex;align-items:center;gap:12px">
+        <div style="font-size:20px">✓</div>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--green)">Gemma 4 is live</div>
+          <div style="font-size:12px;color:var(--t2);margin-top:2px">visio-gemma + gemma4:e4b running at localhost:11434 — <a onclick="show('chat',document.querySelector('[onclick*=chat]'))" style="color:var(--blue);cursor:pointer">open Chat tab to talk to it</a></div>
+        </div>
+      </div>
+
+      <!-- Terminal -->
       <div style="background:#0a0a0a;border:1px solid var(--line);border-radius:var(--r2);overflow:hidden">
-        <!-- Traffic lights -->
         <div style="padding:10px 14px;background:#111;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:7px">
           <div style="width:11px;height:11px;border-radius:50%;background:#ef4444;opacity:.8"></div>
           <div style="width:11px;height:11px;border-radius:50%;background:#f59e0b;opacity:.8"></div>
           <div style="width:11px;height:11px;border-radius:50%;background:#22c55e;opacity:.8"></div>
           <span style="margin-left:8px;font-size:11px;color:var(--t3);font-family:'JetBrains Mono',monospace">install-gemma.sh</span>
           <div style="margin-left:auto;display:flex;align-items:center;gap:6px" id="term-status-badge">
-            <div style="width:6px;height:6px;border-radius:50%;background:var(--t3)"></div>
-            <span style="font-size:11px;color:var(--t3)">Not started</span>
+            <div style="width:6px;height:6px;border-radius:50%;background:var(--t3)" id="term-dot"></div>
+            <span style="font-size:11px;color:var(--t3)" id="term-label">Idle</span>
           </div>
         </div>
-        <!-- Output -->
         <div id="terminal-out"
           style="font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.8;
-                 color:#c8c8d4;padding:16px;height:420px;overflow-y:auto;
+                 color:#c8c8d4;padding:16px;height:360px;overflow-y:auto;
                  white-space:pre-wrap;word-break:break-word">
-<span style="color:var(--t3)">Press "Run Install" above to start Gemma 4 setup.
+<span style="color:var(--green)">✓ gemma4:e4b installed (9.6GB)
+✓ visio-gemma created from Modelfile
+✓ Ollama server live at localhost:11434
 
-This will:
-  1. Download + install Ollama
-  2. Start Ollama server on localhost:11434
-  3. Pull gemma4:e4b (~5GB)
-  4. Create visio-gemma (your social media tuned model)
-
-You'll see every line of output here in real time.</span>
+Your models are ready. Click "Chat" in the sidebar to talk to visio-gemma.
+Use "Re-run Install" above only if you need to reinstall.</span>
         </div>
       </div>
 
-      <!-- Step progress -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px" id="step-grid">
-        <div class="step-card" id="step1">
+      <!-- Steps -->
+      <div class="step-grid" id="step-grid">
+        <div class="step-card done" id="step1">
           <div class="step-num">1</div>
           <div class="step-label">Install Ollama</div>
-          <div class="step-status">Waiting</div>
+          <div class="step-status">✓ Complete</div>
         </div>
-        <div class="step-card" id="step2">
+        <div class="step-card done" id="step2">
           <div class="step-num">2</div>
           <div class="step-label">Start Server</div>
-          <div class="step-status">Waiting</div>
+          <div class="step-status">✓ Running</div>
         </div>
-        <div class="step-card" id="step3">
+        <div class="step-card done" id="step3">
           <div class="step-num">3</div>
           <div class="step-label">Pull gemma4:e4b</div>
-          <div class="step-status">Waiting</div>
+          <div class="step-status">✓ 9.6 GB</div>
         </div>
-        <div class="step-card" id="step4">
+        <div class="step-card done" id="step4">
           <div class="step-num">4</div>
           <div class="step-label">Create visio-gemma</div>
-          <div class="step-status">Waiting</div>
+          <div class="step-status">✓ Complete</div>
         </div>
       </div>
     </div>
@@ -661,20 +699,20 @@ You'll see every line of output here in real time.</span>
             <div class="chat-status">Gemma 4 E4B · tuned for social media · localhost:11434</div>
           </div>
           <div class="chat-online" id="chat-online-badge">
-            <div class="chat-online-dot"></div> Checking…
+            <div class="chat-online-dot"></div> <span id="chat-online-txt">Checking…</span>
           </div>
         </div>
         <div class="chat-messages" id="chat-msgs">
           <div class="msg gemma">
             <div class="msg-av">🤖</div>
             <div>
-              <div class="msg-bubble">Hey! I'm visio-gemma — Gemma 4 tuned for social media content. Once Ollama finishes installing, I'll be live. Ask me to write captions, analyze images, or generate Remotion video scripts.</div>
+              <div class="msg-bubble">Hey! I'm visio-gemma — Gemma 4 tuned for social media content. I write viral hooks, caption scripts, and Remotion video specs. Ask me anything about your content strategy, or paste a Midjourney description and I'll write a full reel script.</div>
               <div class="msg-time">System</div>
             </div>
           </div>
         </div>
         <div class="chat-input-wrap">
-          <textarea class="chat-input" id="chat-in" placeholder="Ask Gemma anything… (requires Ollama running)" rows="1"
+          <textarea class="chat-input" id="chat-in" placeholder="Ask visio-gemma… (Gemma 4 E4B, localhost:11434)" rows="1"
             onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}"
             oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
           <button class="chat-send" onclick="sendMsg()" id="send-btn">➤</button>
@@ -692,8 +730,9 @@ You'll see every line of output here in real time.</span>
           <div class="fg-title">Location on Your Mac</div>
           <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--t2);line-height:2">
             <div style="color:var(--blue)">/Users/mac/.ollama/models/blobs/</div>
-            <div style="color:var(--t3)">Models are stored as content-addressed blobs</div>
-            <div style="color:var(--t3)">Manifests: /Users/mac/.ollama/models/manifests/registry.ollama.ai/library/</div>
+            <div style="color:var(--t3)">sha256-c6eb396dbd59...  ← gemma4:e4b weights (9.6GB)</div>
+            <div style="color:var(--t3)">sha256-e27a8bc052d9...  ← visio-gemma weights</div>
+            <div style="margin-top:8px;color:var(--t3)">Manifests: /Users/mac/.ollama/models/manifests/registry.ollama.ai/library/</div>
           </div>
         </div>
         <div class="file-group">
@@ -703,24 +742,25 @@ You'll see every line of output here in real time.</span>
           <div class="file-line"><span style="color:var(--t2)">Context</span><span style="margin-left:auto;font-size:11px;color:var(--t1)">8192 tokens</span></div>
           <div class="file-line"><span style="color:var(--t2)">Temp</span><span style="margin-left:auto;font-size:11px;color:var(--t1)">0.85</span></div>
           <div class="file-line"><span style="color:var(--t2)">Vision</span><span style="margin-left:auto;font-size:11px;color:var(--green)">Yes — 150M encoder</span></div>
+          <div class="file-line"><span style="color:var(--t2)">Disk</span><span style="margin-left:auto;font-size:11px;color:var(--t1)">9.6 GB</span></div>
         </div>
         <div class="file-group">
           <div class="fg-title">gemma4:e4b (Base)</div>
-          <div class="file-line"><span style="color:var(--t2)">Params</span><span style="margin-left:auto;font-size:11px;color:var(--t1)">~4.5B active</span></div>
-          <div class="file-line"><span style="color:var(--t2)">RAM needed</span><span style="margin-left:auto;font-size:11px;color:var(--green)">~3-4 GB</span></div>
-          <div class="file-line"><span style="color:var(--t2)">Disk size</span><span style="margin-left:auto;font-size:11px;color:var(--t1)">~5 GB</span></div>
-          <div class="file-line"><span style="color:var(--t2)">Speed</span><span style="margin-left:auto;font-size:11px;color:var(--blue)">45–55 tok/s M3 Pro</span></div>
+          <div class="file-line"><span style="color:var(--t2)">Params</span><span style="margin-left:auto;font-size:11px;color:var(--t1)">8.0B Q4_K_M</span></div>
+          <div class="file-line"><span style="color:var(--t2)">RAM needed</span><span style="margin-left:auto;font-size:11px;color:var(--green)">~6-8 GB</span></div>
+          <div class="file-line"><span style="color:var(--t2)">Disk size</span><span style="margin-left:auto;font-size:11px;color:var(--t1)">9.6 GB</span></div>
+          <div class="file-line"><span style="color:var(--t2)">Speed</span><span style="margin-left:auto;font-size:11px;color:var(--blue)">40–50 tok/s M3 Pro</span></div>
           <div class="file-line"><span style="color:var(--t2)">Context</span><span style="margin-left:auto;font-size:11px;color:var(--t1)">128K tokens</span></div>
         </div>
         <div class="file-group" style="grid-column:1/-1">
-          <div class="fg-title">How to Manage</div>
+          <div class="fg-title">Terminal Commands</div>
           <div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--t2);line-height:2.2">
             <div><span style="color:var(--t3)"># List all models</span></div>
             <div><span style="color:var(--blue)">ollama list</span></div>
-            <div><span style="color:var(--t3)"># Chat with your tuned model</span></div>
+            <div><span style="color:var(--t3)"># Chat with your tuned model in terminal</span></div>
             <div><span style="color:var(--blue)">ollama run visio-gemma</span></div>
             <div><span style="color:var(--t3)"># Re-tune (edit Modelfile first)</span></div>
-            <div><span style="color:var(--blue)">ollama create visio-gemma -f ./Modelfile</span></div>
+            <div><span style="color:var(--blue)">ollama create visio-gemma -f /Users/mac/Desktop/visio-reels/Modelfile</span></div>
             <div><span style="color:var(--t3)"># Remove model to free space</span></div>
             <div><span style="color:var(--blue)">ollama rm visio-gemma</span></div>
           </div>
@@ -732,7 +772,7 @@ You'll see every line of output here in real time.</span>
 </div>
 
 <script>
-// ── Clock ─────────────────────────────────
+// Clock
 function tick() {
   const d = new Date();
   document.getElementById('clock').textContent =
@@ -740,53 +780,63 @@ function tick() {
 }
 tick(); setInterval(tick, 1000);
 
-// ── Nav ───────────────────────────────────
+// Nav
 function show(id, el) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const panel = document.getElementById('p-' + id);
   if (panel) panel.classList.add('active');
-  // Walk up from clicked element to find the nav-item
-  let target = el || event.target;
+  // el may be the clicked element or a child span — walk up to .nav-item
+  let target = el;
+  if (!target && window.event) target = window.event.target;
   while (target && !target.classList.contains('nav-item')) target = target.parentElement;
   if (target) target.classList.add('active');
 }
 
-// ── Ollama ping ───────────────────────────
+// Ollama ping
 let ollamaOnline = false;
 async function pingOllama() {
   try {
-    const r = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(2000) });
+    const r = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(3000) });
     const data = await r.json();
+    const count = data.models?.length || 0;
+    const names = data.models?.map(m => m.name).join(', ') || '';
     ollamaOnline = true;
-    const models = data.models?.map(m => m.name).join(', ') || 'none';
-    document.getElementById('ollama-status').textContent = 'Ollama online · ' + (data.models?.length || 0) + ' models';
+
+    document.getElementById('pulse').classList.add('on');
+    document.getElementById('ollama-status').textContent = 'Ollama · ' + count + ' model' + (count !== 1 ? 's' : '') + ' ready';
     document.getElementById('ollama-stat').textContent = 'Online';
-    document.getElementById('ollama-stat').style.color = 'var(--green)';
+    document.getElementById('ollama-sub').textContent = count + ' models loaded';
     document.getElementById('ol-status-sys').textContent = 'Online';
-    document.getElementById('ol-status-sys').style.color = 'var(--green)';
-    document.getElementById('ol-model-sys').textContent = data.models?.[0]?.name || '—';
-    document.getElementById('chat-online-badge').innerHTML = '<div class="chat-online-dot"></div> Online';
-    document.getElementById('chat-online-badge').style.color = 'var(--green)';
-    if (data.models?.length) {
+    document.getElementById('ol-status-sys').className = 'sys-val green';
+    document.getElementById('ol-model-sys').textContent = count + ' model' + (count !== 1 ? 's' : '');
+    document.getElementById('chat-online-badge').classList.add('on');
+    document.getElementById('chat-online-txt').textContent = 'Online';
+    document.getElementById('chat-nav-badge').style.display = '';
+    document.getElementById('install-success').style.display = 'flex';
+
+    if (count > 0) {
       document.getElementById('gemma-stat').textContent = 'Ready';
-      document.getElementById('gemma-stat').style.color = 'var(--green)';
+      logFeed('Ollama live · ' + names, 'green');
     }
-    logFeed('Ollama API responded · ' + (data.models?.length || 0) + ' model(s) loaded', 'green');
   } catch {
+    if (ollamaOnline) logFeed('Ollama went offline — check menu bar icon', 'amber');
     ollamaOnline = false;
-    document.getElementById('ollama-status').textContent = 'Ollama offline — installing…';
-    document.getElementById('chat-online-badge').innerHTML = '⬤ Offline';
-    document.getElementById('chat-online-badge').style.color = 'var(--t3)';
+    document.getElementById('pulse').classList.remove('on');
+    document.getElementById('ollama-status').textContent = 'Ollama offline';
+    document.getElementById('ol-status-sys').textContent = 'Offline';
+    document.getElementById('ol-status-sys').className = 'sys-val amber';
+    document.getElementById('chat-online-badge').classList.remove('on');
+    document.getElementById('chat-online-txt').textContent = 'Offline';
   }
 }
 pingOllama(); setInterval(pingOllama, 5000);
 
-// ── Activity feed ─────────────────────────
+// Activity feed
 const feedLog = [];
 function logFeed(text, type = 'dim') {
   feedLog.unshift({ text, type, ts: new Date().toLocaleTimeString() });
-  if (feedLog.length > 50) feedLog.pop();
+  if (feedLog.length > 60) feedLog.pop();
   renderFeed();
 }
 function renderFeed() {
@@ -799,18 +849,97 @@ function renderFeed() {
 }
 function clearFeed() { feedLog.length = 0; renderFeed(); }
 
-// Pre-populate activity log
-logFeed('<strong>Build complete</strong> — 19/19 files written', 'green');
-logFeed('<strong>@remotion/bundler</strong> installing', 'blue');
-logFeed('<strong>Ollama</strong> brew install running in background', 'amber');
-logFeed('<strong>Next.js</strong> scaffold complete', 'green');
-logFeed('<strong>Remotion deps</strong> installed successfully', 'green');
-logFeed('<strong>visio-gemma Modelfile</strong> created — social media tuned', 'green');
-logFeed('<strong>Agent</strong> wrote SocialReel.tsx — Ken Burns + TikTok captions', 'blue');
-logFeed('<strong>Agent</strong> wrote API routes — generate + render', 'blue');
-logFeed('<strong>Memory saved</strong> — gemma4_research.md · project_visio_reels.md', 'dim');
+logFeed('<strong>gemma4:e4b</strong> installed — 9.6GB', 'green');
+logFeed('<strong>visio-gemma</strong> created from Modelfile', 'green');
+logFeed('<strong>Build complete</strong> — 19/19 files', 'green');
+logFeed('<strong>Remotion</strong> compositions ready — TikTok, Reels, Shorts, Pinterest, X', 'blue');
+logFeed('<strong>API routes</strong> — /api/generate · /api/render live', 'blue');
+logFeed('<strong>visio-gemma Modelfile</strong> — social media tuned, temp 0.85', 'dim');
 
-// ── Chat ──────────────────────────────────
+// Install — SSE stream from /api/install-stream
+let sseActive = false;
+function startInstall() {
+  if (sseActive) return;
+  sseActive = true;
+  const btn = document.getElementById('install-btn');
+  btn.textContent = '⟳ Running…';
+  btn.disabled = true;
+
+  const out = document.getElementById('terminal-out');
+  out.textContent = '';
+  document.getElementById('term-dot').style.background = 'var(--blue)';
+  document.getElementById('term-label').textContent = 'Running';
+
+  // Reset steps
+  ['step1','step2','step3','step4'].forEach(id => {
+    const el = document.getElementById(id);
+    el.className = 'step-card';
+    el.querySelector('.step-status').textContent = 'Waiting';
+  });
+
+  // Kick off the script via POST, then stream log
+  fetch('/api/install', { method: 'POST' }).catch(() => {});
+
+  const es = new EventSource('/api/install-stream');
+  es.onmessage = (e) => {
+    const { line } = JSON.parse(e.data);
+    out.textContent += line + '\n';
+    out.scrollTop = out.scrollHeight;
+
+    // Update step cards from log keywords
+    if (line.includes('STEP 1') || line.includes('Checking Ollama') || line.includes('Ollama already')) {
+      setStep(1, 'active', 'Running…');
+    }
+    if (line.includes('✓ Ollama') || line.includes('ollama CLI linked')) {
+      setStep(1, 'done', '✓ Complete');
+    }
+    if (line.includes('STEP 2') || line.includes('Starting Ollama')) {
+      setStep(2, 'active', 'Running…');
+    }
+    if (line.includes('Ollama API live')) {
+      setStep(2, 'done', '✓ Running');
+    }
+    if (line.includes('STEP 3') || line.includes('Pulling Gemma')) {
+      setStep(3, 'active', 'Downloading…');
+    }
+    if (line.includes('gemma4') && line.includes('pulled')) {
+      setStep(3, 'done', '✓ Complete');
+    }
+    if (line.includes('STEP 4') || line.includes('Creating visio-gemma')) {
+      setStep(4, 'active', 'Creating…');
+    }
+    if (line.includes('visio-gemma created')) {
+      setStep(4, 'done', '✓ Complete');
+    }
+    if (line.includes('DONE') || line.includes('SETUP COMPLETE')) {
+      document.getElementById('term-dot').style.background = 'var(--green)';
+      document.getElementById('term-label').textContent = 'Complete';
+      btn.textContent = '▶ Re-run Install';
+      btn.disabled = false;
+      sseActive = false;
+      es.close();
+      pingOllama();
+    }
+
+    logFeed(line.replace(/</g,'&lt;'), 'blue');
+  };
+  es.onerror = () => {
+    document.getElementById('term-dot').style.background = 'var(--amber)';
+    document.getElementById('term-label').textContent = 'Stream ended';
+    btn.textContent = '▶ Re-run Install';
+    btn.disabled = false;
+    sseActive = false;
+    es.close();
+  };
+}
+
+function setStep(n, cls, status) {
+  const el = document.getElementById('step' + n);
+  el.className = 'step-card ' + cls;
+  el.querySelector('.step-status').textContent = status;
+}
+
+// Chat
 const history = [];
 async function sendMsg() {
   const input = document.getElementById('chat-in');
@@ -823,7 +952,7 @@ async function sendMsg() {
   history.push({ role: 'user', content: text });
 
   if (!ollamaOnline) {
-    appendMsg('gemma', "Ollama isn't running yet — still installing. Once it's ready I'll be online automatically. Keep this tab open!");
+    appendMsg('gemma', "Ollama isn't responding right now. Make sure the Ollama app is running (check your menu bar). Then refresh this page.");
     document.getElementById('send-btn').disabled = false;
     return;
   }
@@ -840,14 +969,14 @@ async function sendMsg() {
       })
     });
     const data = await res.json();
-    const reply = data.message?.content || 'No response.';
+    const reply = data.message?.content || 'No response received.';
     history.push({ role: 'assistant', content: reply });
     typing.remove();
     appendMsg('gemma', reply);
-    logFeed('<strong>Chat</strong> — response received from visio-gemma', 'blue');
-  } catch (e) {
+    logFeed('<strong>Chat</strong> — visio-gemma replied', 'blue');
+  } catch {
     typing.remove();
-    appendMsg('gemma', 'Connection error. Make sure Ollama is running: `ollama serve`');
+    appendMsg('gemma', 'Connection error — make sure Ollama is running (`ollama serve` in terminal).');
   }
   document.getElementById('send-btn').disabled = false;
 }
@@ -860,7 +989,7 @@ function appendMsg(role, text) {
   div.innerHTML = `
     <div class="msg-av">${role === 'user' ? '👤' : '🤖'}</div>
     <div>
-      <div class="msg-bubble">${text.replace(/\n/g,'<br>').replace(/`([^`]+)`/g,'<code style="background:var(--bg3);padding:1px 5px;border-radius:4px;font-family:monospace;font-size:11px">$1</code>')}</div>
+      <div class="msg-bubble">${text.replace(/</g,'&lt;').replace(/\n/g,'<br>').replace(/`([^`]+)`/g,'<code style="background:var(--bg3);padding:1px 5px;border-radius:4px;font-family:monospace;font-size:11px">$1</code>')}</div>
       <div class="msg-time">${ts}</div>
     </div>`;
   msgs.appendChild(div);
