@@ -143,8 +143,47 @@ body {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+@keyframes float-up {
+  0%,100% { transform: translateY(0);  opacity: 0.35; }
+  50%      { transform: translateY(-8px); opacity: 0.8; }
+}
+@keyframes glow-pulse {
+  0%,100% { opacity: 0.3; }
+  50%      { opacity: 0.8; }
+}
+@keyframes grid-drift {
+  0%   { background-position: 0 0; }
+  100% { background-position: 32px 32px; }
+}
 
-.animate-shimmer   { background-size: 200% auto; animation: shimmer 2.2s linear infinite; }
-.animate-pulse-dot { animation: pulse-ring 2s ease-in-out infinite; }
-.animate-spin-slow { animation: spin-slow 8s linear infinite; }
-.animate-fade-up   { animation: fade-up 0.35s ease both; }
+.animate-shimmer    { background-size: 200% auto; animation: shimmer 2.2s linear infinite; }
+.animate-pulse-dot  { animation: pulse-ring 2s ease-in-out infinite; }
+.animate-spin-slow  { animation: spin-slow 8s linear infinite; }
+.animate-fade-up    { animation: fade-up 0.35s ease both; }
+.animate-float      { animation: float-up 3.5s ease-in-out infinite; }
+.animate-glow-pulse { animation: glow-pulse 2.5s ease-in-out infinite; }
+
+/* ── Upload zone grid ──────────────────────────────── */
+.upload-grid {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 32px 32px;
+  animation: grid-drift 8s linear infinite;
+}
+
+/* ── Feature tag ───────────────────────────────────── */
+.feat-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #666;
+  white-space: nowrap;
+}

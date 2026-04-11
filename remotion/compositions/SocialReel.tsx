@@ -7,6 +7,7 @@ import {
   useVideoConfig,
   Img,
   Audio,
+  Sequence,
   staticFile,
   random,
 } from "remotion";
@@ -22,12 +23,14 @@ interface StyleConfig {
 export interface SocialReelProps {
   script: string;
   captions: string[];
-  imageSrc?: string;    // backward compat: single image
-  imageSrcs?: string[]; // multi-image: array
+  imageSrc?: string;       // backward compat: single image
+  imageSrcs?: string[];    // multi-image: array
   platform: string;
   mood: string;
   hook: string;
   cta?: string;
+  bgMusicVolume?: number;  // 0 = mute, 1 = full (default 0.32)
+  sfxVolume?: number;      // 0 = mute, 1 = full (default 0.7)
   style: StyleConfig;
 }
 
@@ -935,19 +938,38 @@ function CTACard({ cta, mood }: { cta?: string; mood: string }) {
 
 // ─── Main composition ─────────────────────────────────────────────────────────
 
-// ─── Sound effects ────────────────────────────────────────────────────────────
+// ─── Sound effect (Sequence-based, correct Remotion pattern) ─────────────────
 
-function SoundEffect({ src, atFrame, volume = 1 }: { src: string; atFrame: number; volume?: number }) {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  // Only mount when we're at or past the trigger frame (within 1s window)
-  if (frame < atFrame || frame > atFrame + fps) return null;
+function SoundEffect({ src, atFrame, durationInFrames = 30, volume = 1 }: {
+  src: string; atFrame: number; durationInFrames?: number; volume?: number;
+}) {
+  if (atFrame < 0) return null;
   return (
-    <Audio
-      src={src}
-      startFrom={0}
-      volume={volume}
-    />
+    <Sequence from={atFrame} durationInFrames={durationInFrames} layout="none">
+      <Audio src={src} volume={volume} />
+    </Sequence>
+  );
+}
+
+// ─── Background music (loops for full duration) ────────────────────────────
+
+const MOOD_MUSIC: Record<string, string> = {
+  cinematic:    "audio/music-cinematic.wav",
+  "dark-moody": "audio/music-dark-moody.wav",
+  vibrant:      "audio/music-vibrant.wav",
+  minimal:      "audio/music-minimal.wav",
+  raw:          "audio/music-raw.wav",
+  neon:         "audio/music-neon.wav",
+};
+
+function BackgroundMusic({ mood, volume = 0.35 }: { mood: string; volume?: number }) {
+  const { durationInFrames } = useVideoConfig();
+  const track = MOOD_MUSIC[mood];
+  if (!track) return null;
+  return (
+    <Sequence from={0} durationInFrames={durationInFrames} layout="none">
+      <Audio src={staticFile(track)} volume={volume} loop />
+    </Sequence>
   );
 }
 
@@ -956,6 +978,17 @@ function SoundEffect({ src, atFrame, volume = 1 }: { src: string; atFrame: numbe
 export function SocialReel(props: SocialReelProps) {
   const { mood, hook, captions, cta, style } = props;
   const { fps, durationInFrames } = useVideoConfig();
+
+  // Volume controls
+  const bgVol  = props.bgMusicVolume  ?? 0.32;
+  const sfxVol = props.sfxVolume      ?? 0.7;
+
+  // Per-mood SFX multiplier
+  const moodSfx: Record<string, number> = {
+    cinematic: 0.55, "dark-moody": 0.75, vibrant: 0.95,
+    minimal: 0.22, raw: 0.6, neon: 0.85,
+  };
+  const vol = (moodSfx[mood] ?? 0.6) * sfxVol;
 
   // Normalize image sources (backward compat)
   const images: string[] = props.imageSrcs?.length
@@ -967,85 +1000,83 @@ export function SocialReel(props: SocialReelProps) {
   const count = Math.max(images.length, 1);
   const framesPerImage = Math.floor(durationInFrames / count);
 
-  // Cut points: where each new image starts (skip index 0 = zoom burst only)
+  // Cut points: where each new image starts
   const cutPoints = Array.from({ length: count }, (_, i) => i * framesPerImage);
 
   // Hook→captions transition frame
   const hookEndFrame = fps * 3;
 
-  // Primary image for chromatic aberration (first image)
+  // Primary image for chromatic aberration
   const primaryImage = images[0] ?? "";
 
-  // Resolve transition type from style
+  // Transition style
   const transitionType = style?.transition ?? "cut";
   const useDissolve = transitionType === "cross-dissolve" || transitionType === "fade";
 
-  // Per-mood SFX volumes
-  const sfxVol = { cinematic: 0.5, "dark-moody": 0.7, vibrant: 0.9, minimal: 0.25, raw: 0.6, neon: 0.8 };
-  const vol = sfxVol[mood as keyof typeof sfxVol] ?? 0.6;
-
   return (
     <AbsoluteFill style={{ background: "#000", fontFamily: "Inter, system-ui, sans-serif" }}>
-      {/* Layer 0: Background images (Ken Burns + dissolve) */}
+      {/* ── Background music (full duration, mood-matched) */}
+      <BackgroundMusic mood={mood} volume={bgVol} />
+
+      {/* ── Layer 0: Background images */}
       <MultiBackground images={images} mood={mood} />
 
-      {/* Layer 1: Color grade overlays */}
+      {/* ── Layer 1: Color grade */}
       <ColorGrade mood={mood} />
 
-      {/* Layer 2: Vignette */}
+      {/* ── Layer 2: Vignette */}
       <Vignette mood={mood} />
 
-      {/* Layer 3: Film grain (CapCut Pro effect) */}
+      {/* ── Layer 3: Film grain */}
       <FilmGrain mood={mood} />
 
-      {/* Layer 4: Neon scan lines */}
+      {/* ── Layer 4: Neon scan lines */}
       <NeonScanLines mood={mood} />
 
-      {/* Layer 5: Cinematic letterbox bars */}
+      {/* ── Layer 5: Cinematic bars */}
       <CinematicBars mood={mood} />
 
-      {/* Layer 6: Cut-point transitions (per image) */}
+      {/* ── Layer 6: Per-image cut transitions + SFX */}
       {cutPoints.slice(1).map((cutFrame) => (
         <React.Fragment key={cutFrame}>
-          {useDissolve ? null : <FlashTransition atFrame={cutFrame} mood={mood} />}
+          {!useDissolve && <FlashTransition atFrame={cutFrame} mood={mood} />}
           <LightLeak atFrame={cutFrame} mood={mood} />
           <GlitchTransition atFrame={cutFrame} mood={mood} />
           <ChromaticAberration atFrame={cutFrame} imageSrc={primaryImage} mood={mood} />
-          {/* Whoosh SFX at each image cut */}
-          <SoundEffect src={staticFile("audio/whoosh.wav")} atFrame={cutFrame - 2} volume={vol * 0.8} />
-          {/* Impact SFX 3 frames after cut */}
-          <SoundEffect src={staticFile("audio/impact.wav")} atFrame={cutFrame + 3} volume={vol * 0.6} />
-          {/* Glitch SFX for glitch moods */}
+          {/* Whoosh on cut */}
+          <SoundEffect src={staticFile("audio/whoosh.wav")} atFrame={Math.max(0, cutFrame - 2)} durationInFrames={fps} volume={vol * 0.8} />
+          {/* Impact hit */}
+          <SoundEffect src={staticFile("audio/impact.wav")} atFrame={cutFrame + 3} durationInFrames={fps} volume={vol * 0.55} />
+          {/* Glitch blip for neon/dark-moody */}
           {(mood === "neon" || mood === "dark-moody") && (
-            <SoundEffect src={staticFile("audio/glitch.wav")} atFrame={cutFrame} volume={vol * 0.9} />
+            <SoundEffect src={staticFile("audio/glitch.wav")} atFrame={cutFrame} durationInFrames={fps} volume={vol * 0.9} />
           )}
         </React.Fragment>
       ))}
 
-      {/* Layer 7: Hook→captions transition */}
+      {/* ── Layer 7: Hook→captions cut */}
       <FlashTransition atFrame={hookEndFrame} mood={mood} />
       <SpeedLines mood={mood} atFrame={hookEndFrame} />
-      {/* SFX at hook→captions cut */}
-      <SoundEffect src={staticFile("audio/whoosh.wav")} atFrame={hookEndFrame - 2} volume={vol} />
+      <SoundEffect src={staticFile("audio/whoosh.wav")} atFrame={Math.max(0, hookEndFrame - 2)} durationInFrames={fps} volume={vol} />
+
+      {/* ── Layer 8: Opening zoom burst */}
+      <ZoomBurst />
+      {/* Opening impact + zoom sfx */}
+      <SoundEffect src={staticFile("audio/impact.wav")} atFrame={0} durationInFrames={fps} volume={vol * 0.45} />
       {(mood === "vibrant" || mood === "raw") && (
-        <SoundEffect src={staticFile("audio/zoom.wav")} atFrame={0} volume={vol * 0.7} />
+        <SoundEffect src={staticFile("audio/zoom.wav")} atFrame={2} durationInFrames={fps} volume={vol * 0.65} />
       )}
 
-      {/* Layer 8: Zoom burst on open */}
-      <ZoomBurst />
-      {/* Impact on open */}
-      <SoundEffect src={staticFile("audio/impact.wav")} atFrame={0} volume={vol * 0.5} />
-
-      {/* Layer 9: Progress bar */}
+      {/* ── Layer 9: Progress bar */}
       <ProgressBar mood={mood} />
 
-      {/* Layer 10: Hook text */}
+      {/* ── Layer 10: Hook text */}
       <HookText hook={hook} mood={mood} />
 
-      {/* Layer 11: Captions */}
+      {/* ── Layer 11: Captions */}
       <Captions captions={captions} startFrame={hookEndFrame} mood={mood} />
 
-      {/* Layer 12: CTA card */}
+      {/* ── Layer 12: CTA */}
       <CTACard cta={cta} mood={mood} />
     </AbsoluteFill>
   );

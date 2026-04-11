@@ -23,6 +23,8 @@ interface RenderRequest {
   mood: string;
   customWidth?: number;     // custom resolution override
   customHeight?: number;
+  bgMusicVolume?: number;   // 0–1, default 0.35
+  sfxVolume?: number;       // 0–1, default 0.7
 }
 
 const PLATFORM_DIMENSIONS: Record<
@@ -142,6 +144,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       hook: script.hook,
       cta: script.cta,
       style: script.style,
+      bgMusicVolume: body.bgMusicVolume ?? 0.35,
+      sfxVolume: body.sfxVolume ?? 0.7,
     };
 
     // Select the composition
