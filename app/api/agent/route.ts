@@ -256,8 +256,24 @@ export async function POST(req: NextRequest) {
         outPath = fileHint ? fileHint[1] : "remotion/compositions/NewVideo.tsx";
       }
 
+      // 5b. Quick sanity check — catch the most common Gemma mistakes before writing
+      const badPatterns = [
+        /^\s*const\s+\{[^}]+\}\s*=\s*useVideoConfig\(\)/m,  // hook at module level
+        /motion\.[a-z]+/,                                     // framer-motion usage
+        /fontSize:\s*\d+rem/,                                 // invalid CSS unit in style obj
+        /<Sequence[^>]+duration=\{/,                          // wrong prop name (durationInFrames)
+      ];
+      const badMatch = badPatterns.find(p => p.test(code));
+      if (badMatch) {
+        send({ type: "error", content: `Gemma produced invalid Remotion code (pattern: ${badMatch}). Try rephrasing or ask again.` });
+        ctrl.close();
+        return;
+      }
+
       // 6. Write the file
       const fullOut = path.join(PROJECT_DIR, outPath);
+      // Back up the original if it exists, so we can restore on validation failure
+      const backup = fs.existsSync(fullOut) ? fs.readFileSync(fullOut, "utf-8") : null;
       fs.mkdirSync(path.dirname(fullOut), { recursive: true });
       fs.writeFileSync(fullOut, code, "utf-8");
       send({ type: "file_written", path: outPath });
@@ -291,6 +307,12 @@ export async function POST(req: NextRequest) {
 
       const validation = runCmd(`remotion still remotion/index.ts ${compId} --frame=30 --scale=0.25 --output=out/preview-${compId}.png`);
       const success = !validation.toLowerCase().includes("error") && !validation.toLowerCase().includes("failed");
+
+      // Auto-restore backup if validation failed and we had a working original
+      if (!success && backup) {
+        fs.writeFileSync(fullOut, backup, "utf-8");
+        send({ type: "status", text: "Restored original file — Gemma's code had errors" });
+      }
 
       send({ type: "validation", success, output: validation.slice(-400), compId });
       send({ type: "done" });

@@ -16,10 +16,10 @@ const SLIDES = [
   { words: ["It", "lets", "you", "build", "anything", "you", "imagine."], color: "#2563eb" },
   { words: ["In", "minutes,", "not", "months."], color: "#059669" },
   { words: ["From", "videos", "to", "apps", "to", "entire", "businesses."], color: "#d97706" },
-  { words: ["The", "future", "belongs", "to", "builders."], color: "#7c3aed" },
+  { words: ["The", "future", "belongs", "to", "builders."], color: "#6d28d9" },
 ];
 
-const SLIDE_DURATION_S = 2; // seconds per slide
+const SLIDE_DURATION_S = 2;
 
 // ── Word ──────────────────────────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ function Word({
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  const delay = index * 4; // 4 frames between each word
+  const delay = index * 4;
   const s = spring({
     frame: Math.max(0, frame - delay),
     fps,
@@ -47,8 +47,6 @@ function Word({
   const y = interpolate(s, [0, 1], [28, 0]);
   const opacity = interpolate(s, [0, 1], [0, 1]);
   const scale = interpolate(s, [0, 1], [0.75, 1]);
-
-  // Last word gets accent colour
   const color = isLast ? accentColor : "#ffffff";
 
   return (
@@ -64,9 +62,7 @@ function Word({
         fontSize: 72,
         letterSpacing: "-2px",
         lineHeight: 1.1,
-        textShadow: isLast
-          ? `0 0 40px ${accentColor}88`
-          : "0 4px 24px rgba(0,0,0,0.8)",
+        textShadow: isLast ? `0 0 40px ${accentColor}88` : "0 4px 24px rgba(0,0,0,0.8)",
       }}
     >
       {word}
@@ -76,19 +72,12 @@ function Word({
 
 // ── Slide ─────────────────────────────────────────────────────────────────────
 
-function Slide({
-  words,
-  accentColor,
-}: {
-  words: string[];
-  accentColor: string;
-}) {
+function Slide({ words, accentColor }: { words: string[]; accentColor: string }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const totalFrames = SLIDE_DURATION_S * fps;
-
-  // Slide fades out in last 8 frames
   const exitStart = totalFrames - 8;
+
   const slideOpacity = interpolate(frame, [exitStart, totalFrames], [1, 0], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
@@ -107,13 +96,7 @@ function Slide({
     >
       <div style={{ textAlign: "center", maxWidth: 900 }}>
         {words.map((word, i) => (
-          <Word
-            key={i}
-            word={word}
-            index={i}
-            accentColor={accentColor}
-            isLast={i === words.length - 1}
-          />
+          <Word key={i} word={word} index={i} accentColor={accentColor} isLast={i === words.length - 1} />
         ))}
       </div>
     </AbsoluteFill>
@@ -124,15 +107,13 @@ function Slide({
 
 function Background({ frame, totalFrames }: { frame: number; totalFrames: number }) {
   const progress = frame / totalFrames;
-
-  // Slowly shifting gradient (Darker and more purple)
   const hue = interpolate(progress, [0, 1], [270, 220], { extrapolateRight: "clamp" });
-  const hue2 = interpolate(progress, [0, 1], [250, 300], { extrapolateRight: "clamp" });
+  const hue2 = interpolate(progress, [0, 1], [240, 290], { extrapolateRight: "clamp" });
 
   return (
     <AbsoluteFill
       style={{
-        background: `radial-gradient(ellipse at 30% 40%, hsl(${hue}, 70%, 4%) 0%, hsl(${hue2}, 50%, 2%) 60%, #000 100%)`,
+        background: `radial-gradient(ellipse at 30% 40%, hsl(${hue},85%,6%) 0%, hsl(${hue2},65%,3%) 60%, #000 100%)`,
       }}
     />
   );
@@ -144,25 +125,8 @@ function ProgressBar({ frame, totalFrames }: { frame: number; totalFrames: numbe
   const width = interpolate(frame, [0, totalFrames], [0, 100], { extrapolateRight: "clamp" });
   return (
     <AbsoluteFill style={{ pointerEvents: "none" }}>
-      <div
-        style={{
-          position: "absolute",
-          bottom: 48,
-          left: 80,
-          right: 80,
-          height: 4,
-          background: "rgba(255,255,255,0.12)",
-          borderRadius: 2,
-        }}
-      >
-        <div
-          style={{
-            height: "100%",
-            width: `${width}%`,
-            background: "rgba(124,58,237,0.8)",
-            borderRadius: 2,
-          }}
-        />
+      <div style={{ position: "absolute", bottom: 48, left: 80, right: 80, height: 4, background: "rgba(255,255,255,0.12)", borderRadius: 2 }}>
+        <div style={{ height: "100%", width: `${width}%`, background: "rgba(109,40,217,0.9)", borderRadius: 2 }} />
       </div>
     </AbsoluteFill>
   );
@@ -180,12 +144,7 @@ export const AIVideo: React.FC = () => {
       <Background frame={frame} totalFrames={durationInFrames} />
 
       {SLIDES.map((slide, i) => (
-        <Sequence
-          key={i}
-          from={i * slideFrames}
-          durationInFrames={slideFrames}
-          premountFor={slideFrames}
-        >
+        <Sequence key={i} from={i * slideFrames} durationInFrames={slideFrames} premountFor={slideFrames}>
           <Slide words={slide.words} accentColor={slide.color} />
         </Sequence>
       ))}
