@@ -357,13 +357,12 @@ export const DubaiHistoryVideo: React.FC = () => {
             </TransitionSeries.Sequence>
             {i < SLIDES.length - 1 && (
               <TransitionSeries.Transition
-                presentation={
-                  s.transition === "wipe"
-                    ? wipePresentation({ direction: "from-left" })
-                    : s.transition === "fade"
-                    ? fadePresentation()
-                    : slidePresentation({ direction: "from-right" })
-                }
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                presentation={(() => {
+                  if (s.transition === "wipe") return wipePresentation({ direction: "from-left" }) as any;
+                  if (s.transition === "fade") return fadePresentation() as any;
+                  return slidePresentation({ direction: "from-right" }) as any;
+                })()}
                 timing={springTiming({
                   config: { damping: 200, stiffness: 1000 },
                   durationRestThreshold: 0.001,

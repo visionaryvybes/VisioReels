@@ -435,7 +435,7 @@ function AssistantBubble({ text, streaming }: { text: string; streaming?: boolea
           </div>
         ) : (
           <pre
-            className="text-xs whitespace-pre-wrap font-mono leading-relaxed max-h-80 overflow-y-auto"
+            className="text-xs whitespace-pre-wrap font-mono-dm leading-relaxed max-h-80 overflow-y-auto"
             style={{ color: "var(--t2)" }}
           >
             {text}
@@ -600,7 +600,7 @@ function EmptyInput({
               color: "var(--t1)",
               caretColor: "#7c3aed",
               maxHeight: 200,
-              fontFamily: "Inter, system-ui, sans-serif",
+              fontFamily: "var(--font-dm-sans, DM Sans), system-ui, sans-serif",
             }}
           />
           <div className="flex items-center justify-end px-4 pb-4">
@@ -919,7 +919,7 @@ export default function AgentPage() {
   return (
     <div
       className="flex flex-col h-screen overflow-hidden"
-      style={{ background: "#09090b", fontFamily: "Inter, system-ui, sans-serif" }}
+      style={{ background: "#09090b", fontFamily: "var(--font-dm-sans, DM Sans), system-ui, sans-serif" }}
     >
       <GlobalKeyframes />
 
@@ -941,7 +941,7 @@ export default function AgentPage() {
             V
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold" style={{ color: "var(--t1)" }}>VisioReels</span>
+            <span className="text-sm font-bold tracking-tight font-display" style={{ color: "var(--t1)", fontFamily: "var(--font-syne, Syne), system-ui" }}>VisioReels</span>
             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full"
               style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}>
               <div className="w-1.5 h-1.5 rounded-full bg-green-500" style={{ animation: "pulse-dot 2s ease-in-out infinite" }} />

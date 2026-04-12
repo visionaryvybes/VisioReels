@@ -1,29 +1,50 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Syne, DM_Sans, DM_Mono } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
+// frontend-design skill: distinctive fonts, never generic Inter/Roboto
+// Syne — geometric, futuristic display → headings & wordmark
+const syne = Syne({
   subsets: ["latin"],
-  variable: "--font-inter",
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-syne",
   display: "swap",
-  preload: true,
-  fallback: ["system-ui", "-apple-system", "sans-serif"],
+});
+
+// DM Sans — refined, slightly condensed body text (not Inter)
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600"],
+  variable: "--font-dm-sans",
+  display: "swap",
+});
+
+// DM Mono — code blocks and technical readouts
+const dmMono = DM_Mono({
+  subsets: ["latin"],
+  weight: ["300", "400", "500"],
+  variable: "--font-dm-mono",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "VisioReels — AI Video Studio",
+  title: "VisioReels — Local AI Video Studio",
   description:
-    "Create viral social media videos with Gemma 4 AI + Remotion rendering. TikTok, Instagram Reels, YouTube Shorts, Pinterest, X — all from a single image.",
+    "Create cinematic social media videos with Gemma 4 + Remotion. Fully local, zero API cost. TikTok, Reels, Shorts, Pinterest, X.",
   keywords: [
-    "AI video",
-    "social media",
-    "TikTok",
-    "Instagram Reels",
-    "YouTube Shorts",
+    "AI video studio",
+    "local AI video",
     "Remotion",
     "Gemma 4",
+    "social media reels",
     "CapCut alternative",
+    "TikTok video generator",
   ],
+  openGraph: {
+    title: "VisioReels — Local AI Video Studio",
+    description: "Gemma 4 writes the code. Remotion renders the video. Zero cloud cost.",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
@@ -32,8 +53,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} dark`} suppressHydrationWarning>
-      <body className="bg-zinc-950 text-white antialiased min-h-screen">
+    <html
+      lang="en"
+      className={`${syne.variable} ${dmSans.variable} ${dmMono.variable} dark`}
+      suppressHydrationWarning
+    >
+      <body
+        className="bg-[#080808] text-white antialiased min-h-screen"
+        style={{ fontFamily: "var(--font-dm-sans), system-ui, sans-serif" }}
+      >
         {children}
       </body>
     </html>

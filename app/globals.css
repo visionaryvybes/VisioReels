@@ -44,12 +44,17 @@ html { color-scheme: dark; scroll-behavior: smooth; }
 body {
   background: var(--bg);
   color: var(--t1);
-  font-family: var(--font-inter, "Inter"), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  /* frontend-design skill: Syne display + DM Sans body — never Inter */
+  font-family: var(--font-dm-sans, "DM Sans"), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
   overflow-x: hidden;
 }
+
+/* ── Typography scale (Syne for display, DM Mono for code) ─ */
+.font-display { font-family: var(--font-syne, "Syne"), system-ui, sans-serif; }
+.font-mono-dm { font-family: var(--font-dm-mono, "DM Mono"), "Courier New", monospace; }
 
 /* ── Background canvas ─────────────────────────────────── */
 .bg-canvas {
