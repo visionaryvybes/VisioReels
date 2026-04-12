@@ -6,17 +6,47 @@ import { execSync } from "child_process";
 const PROJECT_DIR = process.cwd();
 const BIN = path.join(PROJECT_DIR, "node_modules/.bin");
 const OLLAMA_URL = "http://localhost:11434/api/chat";
-const MODEL = "gemma4-coder"; // 32K context, temp 0.2
+const MODEL = "gemma4-coder";
 
-// ── File resolver: pick the right file based on user request ─────────────────
+// ── File resolver ─────────────────────────────────────────────────────────────
 
 function resolveFile(request: string): string | null {
   const r = request.toLowerCase();
   if (r.includes("logreveal") || r.includes("logo")) return "remotion/compositions/LogoReveal.tsx";
   if (r.includes("aivideo") || r.includes("ai video") || r.includes("ai and coding")) return "remotion/compositions/AIVideo.tsx";
   if (r.includes("socialreel") || r.includes("tiktok") || r.includes("reels") || r.includes("caption") || r.includes("hook")) return "remotion/compositions/SocialReel.tsx";
-  if (r.includes("root") || r.includes("composition") || r.includes("register") || r.includes("new video") || r.includes("create a")) return "remotion/Root.tsx";
+  if (r.includes("root") || r.includes("composition") || r.includes("register")) return "remotion/Root.tsx";
+  // Explicit edit keywords with no file type → let Gemma create new
   return null;
+}
+
+// ── Media helpers ─────────────────────────────────────────────────────────────
+
+function needsAudio(r: string): boolean {
+  const l = r.toLowerCase();
+  return l.includes("music") || l.includes("audio") || l.includes("sound") || l.includes("soundtrack") || l.includes("song");
+}
+
+function needsImages(r: string): boolean {
+  const l = r.toLowerCase();
+  return l.includes("image") || l.includes("photo") || l.includes("picture") || l.includes("visual") || l.includes("background");
+}
+
+function parseDuration(request: string): number {
+  // Look for "X second" or "X-second" patterns
+  const match = request.match(/(\d+)\s*[-\s]?second/i);
+  if (match) return Math.min(Math.max(parseInt(match[1]), 3), 120) * 30; // clamp 3–120s, 30fps
+  return 300; // default 10s
+}
+
+function pickAudioFile(request: string): string {
+  const r = request.toLowerCase();
+  if (r.includes("neon") || r.includes("cyber") || r.includes("futur")) return "audio/music-neon.wav";
+  if (r.includes("dark") || r.includes("moody") || r.includes("dramatic")) return "audio/music-dark-moody.wav";
+  if (r.includes("minimal") || r.includes("clean") || r.includes("calm")) return "audio/music-minimal.wav";
+  if (r.includes("vibrant") || r.includes("energy") || r.includes("hype")) return "audio/music-vibrant.wav";
+  if (r.includes("raw") || r.includes("authentic") || r.includes("real")) return "audio/music-raw.wav";
+  return "audio/music-cinematic.wav"; // default
 }
 
 function listRemotionFiles(): string {
@@ -53,28 +83,40 @@ function runCmd(cmd: string): string {
   }
 }
 
-// ── Code extractor: pull tsx/ts/js block from Gemma response ─────────────────
+// ── Code extractor ────────────────────────────────────────────────────────────
 
 function extractCode(response: string): string | null {
   const match = response.match(/```(?:tsx?|jsx?|typescript|javascript)?\n([\s\S]*?)```/);
   return match ? match[1].trim() : null;
 }
 
-// ── Build the prompt Gemma receives ──────────────────────────────────────────
+// ── Prompt builder ────────────────────────────────────────────────────────────
 
-function buildPrompt(userRequest: string, filePath: string | null, fileContent: string | null): string {
-  const remotionRules = `
-REMOTION RULES (mandatory):
+function buildPrompt(
+  userRequest: string,
+  filePath: string | null,
+  fileContent: string | null,
+  durationInFrames: number,
+  audioFile: string | null = null
+): string {
+  const hasAudio = needsAudio(userRequest);
+  const hasImages = needsImages(userRequest);
+
+  const remotionRules = `REMOTION RULES (mandatory):
 - All animations: useCurrentFrame() + interpolate() or spring() — NEVER CSS transitions
-- Import from "remotion": useCurrentFrame, useVideoConfig, interpolate, spring, Easing, AbsoluteFill, Sequence
+- Import from "remotion": useCurrentFrame, useVideoConfig, interpolate, spring, Easing, AbsoluteFill, Sequence${hasAudio ? ", Audio, staticFile" : ""}${hasImages ? ", Img" : ""}
 - Durations: const { fps } = useVideoConfig(); const DUR = N * fps
 - Clamp: { extrapolateRight: "clamp" }
-- Word-by-word: stagger with index * N frames delay, each word gets its own spring
+- Word-by-word: stagger with index * N frames delay
 - Entry easing: Easing.bezier(0.16, 1, 0.3, 1)
-- Always wrap in <AbsoluteFill>`.trim();
+- Always wrap in <AbsoluteFill>
+- Export the component as a named export (e.g. export const MyComponent: React.FC = ...)${hasAudio ? `
+- AUDIO: use <Audio src={staticFile("${audioFile ?? "audio/music-cinematic.wav"}")} volume={0.3} loop /> inside <AbsoluteFill>` : ""}${hasImages ? `
+- IMAGES: use <Img src="https://picsum.photos/seed/TOPIC/1080/1920" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+  Use unique seeds per slide (e.g. "dubai1", "dubai2"). Wrap images in a <Sequence> with 0 zIndex so text overlays on top.` : ""}`;
 
   if (filePath && fileContent) {
-    return `You are a Remotion video coding expert. The user wants to modify a file.
+    return `You are a Remotion video coding expert. Modify the file below exactly as the user requests.
 
 ${remotionRules}
 
@@ -88,18 +130,28 @@ USER REQUEST: ${userRequest}
 Output the COMPLETE modified file inside a single \`\`\`tsx code block. No explanations. No partial code. The full file only.`;
   }
 
-  return `You are a Remotion video coding expert. Create a new Remotion composition.
+  const fps = 30;
+  const seconds = Math.round(durationInFrames / fps);
+
+  return `You are a Remotion video coding expert. Create a NEW Remotion composition.
 
 ${remotionRules}
 
 USER REQUEST: ${userRequest}
+
+SPECS:
+- Duration: ${seconds} seconds = ${durationInFrames} frames at ${fps}fps
+- Resolution: 1080×1920 (vertical, portrait)
+- Split into slides using <Sequence from={i * slideFrames} durationInFrames={slideFrames}>
+- Each slide: background color or image + animated text
+- Dark overlay over images so text is readable
 
 Project structure:
 ${listRemotionFiles()}
 
 Output a NEW complete TSX file inside a \`\`\`tsx code block.
 Then on a new line write: FILE: remotion/compositions/YourComponentName.tsx
-No explanations.`;
+No explanations outside the code block.`;
 }
 
 // ── Ollama streaming ──────────────────────────────────────────────────────────
@@ -123,10 +175,13 @@ async function streamOllama(
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let full = "";
+  let buf = "";
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    for (const line of dec.decode(value).split("\n")) {
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split("\n"); buf = lines.pop() ?? "";
+    for (const line of lines) {
       if (!line.trim()) continue;
       try {
         const tok = JSON.parse(line)?.message?.content ?? "";
@@ -148,9 +203,10 @@ export async function POST(req: NextRequest) {
       const send = (ev: Record<string, unknown>) =>
         ctrl.enqueue(enc.encode(`data: ${JSON.stringify(ev)}\n\n`));
 
-      // 1. Figure out which file to edit
+      // 1. Figure out which file to edit (or create new)
       const filePath = resolveFile(userMessage);
       let fileContent: string | null = null;
+      const durationInFrames = filePath ? 300 : parseDuration(userMessage);
 
       if (filePath) {
         const full = path.join(PROJECT_DIR, filePath);
@@ -161,12 +217,20 @@ export async function POST(req: NextRequest) {
           send({ type: "status", text: `Creating new file: ${filePath}` });
         }
       } else {
-        send({ type: "status", text: "Creating new composition…" });
+        const secs = Math.round(durationInFrames / 30);
+        send({ type: "status", text: `Creating new ${secs}s composition…` });
       }
 
-      // 2. Build prompt and send to Gemma
-      const prompt = buildPrompt(userMessage, filePath, fileContent);
-      send({ type: "status", text: "Gemma is writing the code…" });
+      // 2. Ensure audio placeholder exists if needed
+      const audioFile = needsAudio(userMessage) ? pickAudioFile(userMessage) : null;
+      if (audioFile) {
+        send({ type: "status", text: `Using ${audioFile} for background music` });
+      }
+
+      // 3. Build prompt and stream to Gemma
+      const prompt = buildPrompt(userMessage, filePath, fileContent, durationInFrames, audioFile);
+      const tokenCount = Math.round(prompt.length / 4);
+      send({ type: "status", text: `Gemma is writing the code… (${tokenCount} ctx tokens, may take 30–90s)` });
 
       let response = "";
       try {
@@ -177,29 +241,28 @@ export async function POST(req: NextRequest) {
         return;
       }
 
-      // 3. Extract the code block
+      // 4. Extract code block
       const code = extractCode(response);
       if (!code) {
-        send({ type: "error", content: "Gemma didn't output a code block. Try rephrasing." });
+        send({ type: "error", content: "Gemma didn't output a code block. Try rephrasing your request." });
         ctrl.close();
         return;
       }
 
-      // 4. Determine output file path
+      // 5. Determine output path
       let outPath = filePath;
       if (!outPath) {
-        // Try to parse FILE: hint from response
         const fileHint = response.match(/FILE:\s*(remotion\/[^\s\n]+)/);
         outPath = fileHint ? fileHint[1] : "remotion/compositions/NewVideo.tsx";
       }
 
-      // 5. Write the file
+      // 6. Write the file
       const fullOut = path.join(PROJECT_DIR, outPath);
       fs.mkdirSync(path.dirname(fullOut), { recursive: true });
       fs.writeFileSync(fullOut, code, "utf-8");
       send({ type: "file_written", path: outPath });
 
-      // 6. If new composition, add to Root.tsx
+      // 7. Register in Root.tsx if new composition
       if (!filePath && outPath !== "remotion/Root.tsx") {
         const compName = path.basename(outPath, ".tsx");
         const rootPath = path.join(PROJECT_DIR, "remotion/Root.tsx");
@@ -212,14 +275,14 @@ export async function POST(req: NextRequest) {
             )
             .replace(
               /    <\/>\n  \);\n\};/,
-              `      <Composition id="${compName}" component={${compName}} durationInFrames={300} fps={30} width={1080} height={1080} defaultProps={{}} />\n    </>\n  );\n};`
+              `      <Composition id="${compName}" component={${compName}} durationInFrames={${durationInFrames}} fps={30} width={1080} height={1920} defaultProps={{}} />\n    </>\n  );\n};`
             );
           fs.writeFileSync(rootPath, newRoot);
           send({ type: "file_written", path: "remotion/Root.tsx" });
         }
       }
 
-      // 7. Validate with remotion still
+      // 8. Validate
       send({ type: "status", text: "Validating with Remotion…" });
       const compId = outPath.includes("SocialReel") ? "SocialReel-tiktok"
         : outPath.includes("LogoReveal") ? "LogoReveal"

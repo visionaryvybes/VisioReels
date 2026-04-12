@@ -15,10 +15,10 @@ type Msg =
 type RenderState = "idle" | "rendering" | "done" | "error";
 
 const SUGGESTIONS = [
+  "Create a 30 second video about the history of Dubai with images and music",
   "Add word-by-word caption animation to SocialReel-tiktok",
-  "Create a 10 second video about AI and coding being awesome",
-  "Make the LogoReveal text slide in from below with overshoot spring",
-  "Add a glowing neon title animation to SocialReel-tiktok",
+  "Make the AIVideo background deep black with cyan accents",
+  "Create a 15 second motivational video with bold text and music",
 ];
 
 // ── Render Panel ──────────────────────────────────────────────────────────────
@@ -101,11 +101,25 @@ export default function AgentPage() {
   const [busy, setBusy] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [refreshRender, setRefreshRender] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const [gemmaStarted, setGemmaStarted] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const streamingIdxRef = useRef(-1);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
+
+  // Elapsed timer — starts when Gemma begins generating
+  useEffect(() => {
+    if (gemmaStarted) {
+      setElapsed(0);
+      timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
+    } else {
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [gemmaStarted]);
 
   const send = useCallback(async (prompt?: string) => {
     const text = (prompt ?? input).trim();
@@ -113,6 +127,8 @@ export default function AgentPage() {
     setInput("");
     setBusy(true);
     setMsgs(m => [...m, { kind: "user", text }]);
+
+    setGemmaStarted(false);
 
     const res = await fetch("/api/agent", {
       method: "POST",
@@ -142,6 +158,10 @@ export default function AgentPage() {
           setMsgs(m => [...m, { kind: "status", text: ev.text }]);
         }
 
+        if (ev.type === "token" && !gemmaStarted) {
+          setGemmaStarted(true);
+        }
+
         if (ev.type === "token") {
           setMsgs(m => {
             const idx = streamingIdxRef.current;
@@ -159,6 +179,7 @@ export default function AgentPage() {
         }
 
         if (ev.type === "file_written") {
+          setGemmaStarted(false);
           streamingIdxRef.current = -1; // close streaming block
           // Mark last assistant msg as done
           setMsgs(m => {
@@ -180,12 +201,14 @@ export default function AgentPage() {
         }
 
         if (ev.type === "error") {
+          setGemmaStarted(false);
           streamingIdxRef.current = -1;
           setMsgs(m => [...m, { kind: "error", text: ev.content }]);
         }
       }
     }
 
+    setGemmaStarted(false);
     setBusy(false);
     setTimeout(() => textareaRef.current?.focus(), 50);
   }, [input, busy]);
@@ -263,7 +286,22 @@ export default function AgentPage() {
                 <div>
                   <p className="text-base font-semibold text-zinc-200">What do you want to build?</p>
                   <p className="text-sm text-zinc-500 mt-1">Gemma writes the code. Hit Render in the sidebar.</p>
+                  <p className="text-xs text-zinc-700 mt-2">Complex videos take 30–90s — a timer appears while Gemma writes.</p>
                 </div>
+              </div>
+            )}
+
+            {/* Live Gemma timer — shows when code is streaming */}
+            {gemmaStarted && (
+              <div className="flex items-center justify-center gap-3 py-4">
+                <div className="flex gap-1">
+                  {[0,1,2,3].map(n => (
+                    <div key={n} className="w-1.5 h-1.5 rounded-full bg-violet-500"
+                      style={{ animation: `bounce 1s ease-in-out ${n * 0.15}s infinite alternate` }} />
+                  ))}
+                </div>
+                <span className="text-sm text-violet-400 font-mono tabular-nums">{elapsed}s</span>
+                <span className="text-xs text-zinc-600">Gemma is writing your video…</span>
               </div>
             )}
 
