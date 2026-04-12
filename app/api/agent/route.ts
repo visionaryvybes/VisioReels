@@ -102,18 +102,19 @@ function buildPrompt(
   const hasAudio = needsAudio(userRequest);
   const hasImages = needsImages(userRequest);
 
-  const remotionRules = `REMOTION RULES (mandatory):
-- All animations: useCurrentFrame() + interpolate() or spring() — NEVER CSS transitions
-- Import from "remotion": useCurrentFrame, useVideoConfig, interpolate, spring, Easing, AbsoluteFill, Sequence${hasAudio ? ", Audio, staticFile" : ""}${hasImages ? ", Img" : ""}
-- Durations: const { fps } = useVideoConfig(); const DUR = N * fps
-- Clamp: { extrapolateRight: "clamp" }
-- Word-by-word: stagger with index * N frames delay
+  const remotionRules = `REMOTION RULES (mandatory — follow exactly):
+- useVideoConfig() and useCurrentFrame() ONLY inside React functional components — NEVER at module level
+- All animations: spring() or interpolate() — NEVER CSS transitions, NEVER framer-motion, NEVER motion.*
+- Correct imports: import { useCurrentFrame, useVideoConfig, interpolate, spring, Easing, AbsoluteFill, Sequence${hasAudio ? ", Audio, staticFile" : ""}${hasImages ? ", Img" : ""} } from "remotion"
+- For slide-to-slide transitions use @remotion/transitions: import { TransitionSeries, springTiming } from "@remotion/transitions"; import { fade } from "@remotion/transitions/fade"; import { slide as slidePresentation } from "@remotion/transitions/slide"
+- Ken Burns zoom on images: interpolate(frame/durationInFrames, [0,1], [1.0, 1.08]) with extrapolateRight:"clamp"
+- Word-by-word: spring({ frame: Math.max(0, frame - index * 4), fps }) stagger
 - Entry easing: Easing.bezier(0.16, 1, 0.3, 1)
-- Always wrap in <AbsoluteFill>
-- Export the component as a named export (e.g. export const MyComponent: React.FC = ...)${hasAudio ? `
-- AUDIO: use <Audio src={staticFile("${audioFile ?? "audio/music-cinematic.wav"}")} volume={0.3} loop /> inside <AbsoluteFill>` : ""}${hasImages ? `
-- IMAGES: use <Img src="https://picsum.photos/seed/TOPIC/1080/1920" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-  Use unique seeds per slide (e.g. "dubai1", "dubai2"). Wrap images in a <Sequence> with 0 zIndex so text overlays on top.` : ""}`;
+- Durations: const { fps, durationInFrames } = useVideoConfig()
+- Always wrap root in <AbsoluteFill>
+- Named export: export const MyComponent: React.FC = () => { ... }${hasAudio ? `
+- AUDIO: <Audio src={staticFile("${audioFile ?? "audio/music-cinematic.wav"}")} volume={0.28} /> inside AbsoluteFill` : ""}${hasImages ? `
+- IMAGES: <Img src="https://images.unsplash.com/photo-ID?w=1080&h=1920&fit=crop&q=80" style={{width:"100%",height:"100%",objectFit:"cover"}} /> — use real Unsplash photo IDs relevant to the topic` : ""}`;
 
   if (filePath && fileContent) {
     return `You are a Remotion video coding expert. Modify the file below exactly as the user requests.

@@ -2,6 +2,7 @@ import React from "react";
 import { Composition } from "remotion";
 import { SocialReel } from "./compositions/SocialReel";
 import { LogoReveal } from "./compositions/LogoReveal";
+import { DubaiHistoryVideo } from "./compositions/DubaiHistoryVideo";
 import { AIVideo } from "./compositions/AIVideo";
 import { PLATFORMS } from "../lib/platforms";
 
@@ -57,6 +58,16 @@ export const RemotionRoot: React.FC = () => {
         fps={30}
         width={1080}
         height={1080}
+        defaultProps={{}}
+      />
+      {/* 30s Dubai history: 5 slides × 200 frames – 4 transitions × 20 frames = 920 frames */}
+      <Composition
+        id="DubaiHistoryVideo"
+        component={DubaiHistoryVideo}
+        durationInFrames={920}
+        fps={30}
+        width={1080}
+        height={1920}
         defaultProps={{}}
       />
     </>

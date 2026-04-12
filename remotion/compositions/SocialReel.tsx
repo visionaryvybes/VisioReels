@@ -706,7 +706,7 @@ function HookText({ hook, mood }: { hook: string; mood: string }) {
             </span>
           );
         })}
-      </div>
+      </div >
     </AbsoluteFill>
   );
 }
@@ -859,7 +859,7 @@ function Captions({
             mood={mood}
           />
         ))}
-      </div>
+      </div >
     </AbsoluteFill>
   );
 }
@@ -930,7 +930,7 @@ function CTACard({ cta, mood }: { cta?: string; mood: string }) {
           }}
         >
           {cta}
-        </div>
+        </div >
       </div>
     </AbsoluteFill>
   );
