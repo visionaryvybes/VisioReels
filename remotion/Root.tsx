@@ -2,23 +2,25 @@ import React from "react";
 import { Composition } from "remotion";
 import { SocialReel } from "./compositions/SocialReel";
 import { LogoReveal } from "./compositions/LogoReveal";
+import { AIVideo } from "./compositions/AIVideo";
 import { PLATFORMS } from "../lib/platforms";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const SocialReelComponent = SocialReel as unknown as React.ComponentType<any>;
 
 const defaultProps = {
-  script: "Your video script will appear here. Upload an image and generate a script first.",
-  captions: ["Your", "video", "captions", "go here"],
+  script: "AI and coding is awesome — it lets you build anything you imagine.",
+  captions: [
+    "AI & coding is awesome",
+    "Build anything you imagine",
+    "In minutes not months",
+    "The future belongs to builders",
+  ],
   imageSrc: "",
   platform: "tiktok",
   mood: "cinematic",
-  hook: "Wait for it...",
-  style: {
-    transition: "cross-dissolve",
-    textStyle: "bold-white",
-    colorGrade: "teal-orange",
-  },
+  hook: "AI & Coding is AWESOME 🔥",
+  style: { transition: "cross-dissolve", textStyle: "bold-white", colorGrade: "teal-orange" },
 };
 
 export const RemotionRoot: React.FC = () => {
@@ -41,6 +43,17 @@ export const RemotionRoot: React.FC = () => {
         id="LogoReveal"
         component={LogoReveal}
         durationInFrames={90}
+        fps={30}
+        width={1080}
+        height={1080}
+        defaultProps={{}}
+      />
+
+      {/* 10-second word-by-word caption video */}
+      <Composition
+        id="AIVideo"
+        component={AIVideo}
+        durationInFrames={300}
         fps={30}
         width={1080}
         height={1080}
