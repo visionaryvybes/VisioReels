@@ -45,12 +45,26 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-  // List available compositions by reading Root.tsx
+  // List available compositions: static ids from Root.tsx + dynamic SocialReel-<platform> ids
   const rootPath = path.join(PROJECT_DIR, "remotion", "Root.tsx");
   try {
     const content = fs.readFileSync(rootPath, "utf-8");
-    const ids = [...content.matchAll(/id=["']([^"']+)["']/g)].map((m) => m[1]);
-    return NextResponse.json({ compositions: ids });
+    // Static string ids: id="Foo" or id='Foo'
+    const staticIds = [...content.matchAll(/id=["']([^"']+)["']/g)].map((m) => m[1]);
+    // Dynamic SocialReel ids: extract only from PLATFORMS array in platforms.ts
+    const platformsPath = path.join(PROJECT_DIR, "lib", "platforms.ts");
+    let socialIds: string[] = [];
+    try {
+      const platformsContent = fs.readFileSync(platformsPath, "utf-8");
+      // Grab only the PLATFORMS array block (stops at MOODS)
+      const platformsBlock = platformsContent.match(/export const PLATFORMS[^=]+=\s*\[([\s\S]*?)\];/)?.[1] ?? "";
+      const platformIds = [...platformsBlock.matchAll(/id:\s*["']([^"']+)["']/g)].map((m) => m[1]);
+      if (content.includes("SocialReel-") && platformIds.length) {
+        socialIds = platformIds.map((id) => `SocialReel-${id}`);
+      }
+    } catch { /* platforms.ts not found — skip */ }
+    const all = [...new Set([...socialIds, ...staticIds])];
+    return NextResponse.json({ compositions: all });
   } catch {
     return NextResponse.json({ compositions: [] });
   }

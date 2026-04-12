@@ -4,149 +4,122 @@ import path from "path";
 import { execSync } from "child_process";
 
 const PROJECT_DIR = process.cwd();
-const BIN         = path.join(PROJECT_DIR, "node_modules/.bin");
-const OLLAMA_URL  = "http://localhost:11434/api/chat";
-const MODEL       = "gemma4:e4b";
+const BIN = path.join(PROJECT_DIR, "node_modules/.bin");
+const OLLAMA_URL = "http://localhost:11434/api/chat";
+const MODEL = "gemma4-coder"; // 32K context, temp 0.2
 
-// ── System prompt ─────────────────────────────────────────────────────────────
-// Minimal and directive. Gemma 4B must not ramble.
+// ── File resolver: pick the right file based on user request ─────────────────
 
-const SYSTEM_PROMPT = `You are a Remotion code-writing agent. Your ONLY job is to write and edit TypeScript/TSX files.
-
-STRICT RULES:
-- NEVER write reviews, analysis, or explanations. ONLY write code.
-- Read a file at most ONCE. Then immediately write the updated version.
-- After writing a file, call run_command to validate. Then STOP.
-- If asked to add a feature: read the file → rewrite it → validate → done.
-- Do NOT list files unless you have no idea what exists.
-
-PROJECT: ${PROJECT_DIR}
-REMOTION ENTRY: remotion/index.ts
-COMPOSITIONS: remotion/Root.tsx + remotion/compositions/
-
-ANIMATION RULES (mandatory):
-- All animations: useCurrentFrame() + interpolate() or spring()
-- Import: import { useCurrentFrame, useVideoConfig, interpolate, spring, Easing, AbsoluteFill, Sequence } from "remotion"
-- Durations: const { fps } = useVideoConfig(); const DUR = N * fps;
-- Clamp all interpolations: { extrapolateRight: "clamp" }
-- NEVER use CSS transitions or CSS animations — they break rendering
-- Springs: spring({ frame, fps, config: { damping: 14, stiffness: 160 } })
-- Easing: Easing.bezier(0.16, 1, 0.3, 1) for entrances
-
-WORD-BY-WORD CAPTIONS pattern:
-\`\`\`tsx
-const words = captions; // string[]
-{words.map((word, i) => {
-  const start = i * wordInterval;
-  const wordSpring = spring({ frame: Math.max(0, frame - start), fps, config: { damping: 20, stiffness: 200 } });
-  const wordY = interpolate(wordSpring, [0, 1], [20, 0]);
-  const wordOpacity = interpolate(wordSpring, [0, 1], [0, 1]);
-  return (
-    <span key={i} style={{ display: 'inline-block', transform: \`translateY(\${wordY}px)\`, opacity: wordOpacity, marginRight: 8 }}>
-      {word}
-    </span>
-  );
-})}
-\`\`\`
-
-VALIDATE: run_command → remotion still remotion/index.ts <CompositionId> --frame=30 --scale=0.25
-RENDER:   run_command → remotion render remotion/index.ts <CompositionId> out/<name>.mp4
-
-TOOL FORMAT — use exactly this XML, one tool per message:
-<tool>read_file</tool><path>remotion/compositions/SocialReel.tsx</path>
-<tool>write_file</tool><path>remotion/compositions/SocialReel.tsx</path><content>
-FULL FILE CONTENT HERE
-</content>
-<tool>run_command</tool><cmd>remotion still remotion/index.ts SocialReel-tiktok --frame=30 --scale=0.25</cmd>
-<tool>list_files</tool><path>remotion/</path>`.trim();
-
-// ── Tools ─────────────────────────────────────────────────────────────────────
-
-function readFile(p: string) {
-  const full = path.isAbsolute(p) ? p : path.join(PROJECT_DIR, p);
-  try { return fs.readFileSync(full, "utf-8"); } catch { return `ERROR: not found: ${full}`; }
+function resolveFile(request: string): string | null {
+  const r = request.toLowerCase();
+  if (r.includes("logreveal") || r.includes("logo")) return "remotion/compositions/LogoReveal.tsx";
+  if (r.includes("aivideo") || r.includes("ai video") || r.includes("ai and coding")) return "remotion/compositions/AIVideo.tsx";
+  if (r.includes("socialreel") || r.includes("tiktok") || r.includes("reels") || r.includes("caption") || r.includes("hook")) return "remotion/compositions/SocialReel.tsx";
+  if (r.includes("root") || r.includes("composition") || r.includes("register") || r.includes("new video") || r.includes("create a")) return "remotion/Root.tsx";
+  return null;
 }
 
-function writeFile(p: string, content: string) {
-  const full = path.isAbsolute(p) ? p : path.join(PROJECT_DIR, p);
-  fs.mkdirSync(path.dirname(full), { recursive: true });
-  fs.writeFileSync(full, content, "utf-8");
-  return `✓ Written: ${full}`;
-}
-
-function runCmd(cmd: string) {
-  const resolved = cmd.replace(/^remotion\b/, `${BIN}/remotion`);
-  try {
-    return execSync(resolved, {
-      cwd: PROJECT_DIR, timeout: 300_000, encoding: "utf-8", stdio: "pipe",
-      env: { ...process.env, PATH: `${BIN}:${process.env.PATH}` },
-    }).slice(0, 2000);
-  } catch (e: unknown) {
-    const err = e as { stdout?: string; stderr?: string; message?: string };
-    return ((err.stdout ?? "") + (err.stderr ?? "") || err.message || "failed").slice(0, 2000);
-  }
-}
-
-function listFiles(dir: string) {
-  const full = path.isAbsolute(dir) ? dir : path.join(PROJECT_DIR, dir);
-  const skip = new Set(["node_modules", ".git", ".next", "out"]);
+function listRemotionFiles(): string {
+  const dir = path.join(PROJECT_DIR, "remotion");
   const lines: string[] = [];
   function walk(d: string, depth: number) {
     if (depth > 3) return;
     let entries: fs.Dirent[];
     try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
-      if (skip.has(e.name)) continue;
-      lines.push("  ".repeat(depth) + (e.isDirectory() ? `📁 ${e.name}/` : `📄 ${e.name}`));
+      if (e.name.startsWith(".")) continue;
+      lines.push("  ".repeat(depth) + e.name + (e.isDirectory() ? "/" : ""));
       if (e.isDirectory()) walk(path.join(d, e.name), depth + 1);
     }
   }
-  walk(full, 0);
+  walk(dir, 0);
   return lines.join("\n");
 }
 
-function executeTool(tool: string, attrs: Record<string, string>) {
-  switch (tool) {
-    case "read_file":   return readFile(attrs.path ?? "");
-    case "write_file":  return writeFile(attrs.path ?? "", attrs.content ?? "");
-    case "run_command": return runCmd(attrs.cmd ?? "");
-    case "list_files":  return listFiles(attrs.path ?? ".");
-    default:            return `Unknown tool: ${tool}`;
+// ── Tool runner ───────────────────────────────────────────────────────────────
+
+function runCmd(cmd: string): string {
+  const resolved = cmd.startsWith("remotion")
+    ? `${BIN}/remotion ${cmd.slice(8)}`
+    : cmd;
+  try {
+    return execSync(resolved, {
+      cwd: PROJECT_DIR, timeout: 300_000, encoding: "utf-8", stdio: "pipe",
+      env: { ...process.env, PATH: `${BIN}:${process.env.PATH}` },
+    }).slice(-1000);
+  } catch (e: unknown) {
+    const err = e as { stdout?: string; stderr?: string; message?: string };
+    return ((err.stdout ?? "") + (err.stderr ?? "") || err.message || "failed").slice(-1000);
   }
 }
 
-function parseTools(text: string) {
-  const calls: Array<{ tool: string; attrs: Record<string, string> }> = [];
-  const re = /<tool>(.*?)<\/tool>([\s\S]*?)(?=<tool>|$)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    const tool = m[1].trim();
-    const body = m[2];
-    const attrs: Record<string, string> = {};
-    for (const tag of ["path", "cmd", "content"]) {
-      const tm = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`).exec(body);
-      if (tm) attrs[tag] = tm[1].trim();
-    }
-    calls.push({ tool, attrs });
-  }
-  return calls;
+// ── Code extractor: pull tsx/ts/js block from Gemma response ─────────────────
+
+function extractCode(response: string): string | null {
+  const match = response.match(/```(?:tsx?|jsx?|typescript|javascript)?\n([\s\S]*?)```/);
+  return match ? match[1].trim() : null;
 }
 
-// ── Streaming Ollama ──────────────────────────────────────────────────────────
+// ── Build the prompt Gemma receives ──────────────────────────────────────────
+
+function buildPrompt(userRequest: string, filePath: string | null, fileContent: string | null): string {
+  const remotionRules = `
+REMOTION RULES (mandatory):
+- All animations: useCurrentFrame() + interpolate() or spring() — NEVER CSS transitions
+- Import from "remotion": useCurrentFrame, useVideoConfig, interpolate, spring, Easing, AbsoluteFill, Sequence
+- Durations: const { fps } = useVideoConfig(); const DUR = N * fps
+- Clamp: { extrapolateRight: "clamp" }
+- Word-by-word: stagger with index * N frames delay, each word gets its own spring
+- Entry easing: Easing.bezier(0.16, 1, 0.3, 1)
+- Always wrap in <AbsoluteFill>`.trim();
+
+  if (filePath && fileContent) {
+    return `You are a Remotion video coding expert. The user wants to modify a file.
+
+${remotionRules}
+
+CURRENT FILE: ${filePath}
+\`\`\`tsx
+${fileContent}
+\`\`\`
+
+USER REQUEST: ${userRequest}
+
+Output the COMPLETE modified file inside a single \`\`\`tsx code block. No explanations. No partial code. The full file only.`;
+  }
+
+  return `You are a Remotion video coding expert. Create a new Remotion composition.
+
+${remotionRules}
+
+USER REQUEST: ${userRequest}
+
+Project structure:
+${listRemotionFiles()}
+
+Output a NEW complete TSX file inside a \`\`\`tsx code block.
+Then on a new line write: FILE: remotion/compositions/YourComponentName.tsx
+No explanations.`;
+}
+
+// ── Ollama streaming ──────────────────────────────────────────────────────────
 
 async function streamOllama(
-  messages: Array<{ role: string; content: string }>,
+  prompt: string,
   onToken: (t: string) => void
 ): Promise<string> {
   const res = await fetch(OLLAMA_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: MODEL, messages, stream: true,
-      options: { temperature: 0.1, top_p: 0.9, num_ctx: 6000 },
+      model: MODEL,
+      messages: [{ role: "user", content: prompt }],
+      stream: true,
+      options: { temperature: 0.15, top_p: 0.9, num_ctx: 32768 },
     }),
   });
-  if (!res.ok || !res.body) throw new Error(`Ollama ${res.status}`);
+  if (!res.ok || !res.body) throw new Error(`Ollama error: ${res.status}`);
+
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let full = "";
@@ -167,7 +140,7 @@ async function streamOllama(
 // ── Route ─────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const { messages: history, userMessage } = await req.json();
+  const { userMessage } = await req.json();
 
   const enc = new TextEncoder();
   const stream = new ReadableStream({
@@ -175,53 +148,88 @@ export async function POST(req: NextRequest) {
       const send = (ev: Record<string, unknown>) =>
         ctrl.enqueue(enc.encode(`data: ${JSON.stringify(ev)}\n\n`));
 
-      const msgs: Array<{ role: string; content: string }> = [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...history,
-        { role: "user", content: userMessage },
-      ];
+      // 1. Figure out which file to edit
+      const filePath = resolveFile(userMessage);
+      let fileContent: string | null = null;
 
-      let reads = 0;
-      for (let iter = 0; iter < 6; iter++) {
-        send({ type: "thinking" });
-
-        let response = "";
+      if (filePath) {
+        const full = path.join(PROJECT_DIR, filePath);
         try {
-          response = await streamOllama(msgs, (tok) => send({ type: "token", tok }));
-        } catch (e) {
-          send({ type: "error", content: String(e) });
-          break;
+          fileContent = fs.readFileSync(full, "utf-8");
+          send({ type: "status", text: `Reading ${filePath}…` });
+        } catch {
+          send({ type: "status", text: `Creating new file: ${filePath}` });
         }
-
-        const toolCalls = parseTools(response);
-        if (!toolCalls.length) {
-          const clean = response.replace(/<tool>[\s\S]*?<\/tool>[\s\S]*?(?=<tool>|$)/g, "").trim();
-          send({ type: "message", content: clean || "Done." });
-          msgs.push({ role: "assistant", content: response });
-          break;
-        }
-
-        const reasoning = response.replace(/<tool>[\s\S]*/, "").trim();
-        if (reasoning) send({ type: "reasoning", content: reasoning });
-
-        const results: string[] = [];
-        for (const call of toolCalls) {
-          // Limit reads to prevent infinite exploration
-          if (call.tool === "read_file") reads++;
-          if (reads > 3) {
-            send({ type: "error", content: "Too many file reads — writing code now." });
-            break;
-          }
-          send({ type: "tool_call", tool: call.tool, detail: call.attrs.path ?? call.attrs.cmd ?? "" });
-          const result = executeTool(call.tool, call.attrs);
-          send({ type: "tool_result", tool: call.tool, result: result.slice(0, 600) });
-          results.push(`<result tool='${call.tool}'>\n${result}\n</result>`);
-        }
-
-        msgs.push({ role: "assistant", content: response });
-        msgs.push({ role: "user", content: results.join("\n") });
+      } else {
+        send({ type: "status", text: "Creating new composition…" });
       }
 
+      // 2. Build prompt and send to Gemma
+      const prompt = buildPrompt(userMessage, filePath, fileContent);
+      send({ type: "status", text: "Gemma is writing the code…" });
+
+      let response = "";
+      try {
+        response = await streamOllama(prompt, (tok) => send({ type: "token", tok }));
+      } catch (e) {
+        send({ type: "error", content: `Ollama error: ${e}` });
+        ctrl.close();
+        return;
+      }
+
+      // 3. Extract the code block
+      const code = extractCode(response);
+      if (!code) {
+        send({ type: "error", content: "Gemma didn't output a code block. Try rephrasing." });
+        ctrl.close();
+        return;
+      }
+
+      // 4. Determine output file path
+      let outPath = filePath;
+      if (!outPath) {
+        // Try to parse FILE: hint from response
+        const fileHint = response.match(/FILE:\s*(remotion\/[^\s\n]+)/);
+        outPath = fileHint ? fileHint[1] : "remotion/compositions/NewVideo.tsx";
+      }
+
+      // 5. Write the file
+      const fullOut = path.join(PROJECT_DIR, outPath);
+      fs.mkdirSync(path.dirname(fullOut), { recursive: true });
+      fs.writeFileSync(fullOut, code, "utf-8");
+      send({ type: "file_written", path: outPath });
+
+      // 6. If new composition, add to Root.tsx
+      if (!filePath && outPath !== "remotion/Root.tsx") {
+        const compName = path.basename(outPath, ".tsx");
+        const rootPath = path.join(PROJECT_DIR, "remotion/Root.tsx");
+        const root = fs.readFileSync(rootPath, "utf-8");
+        if (!root.includes(compName)) {
+          const newRoot = root
+            .replace(
+              /import { AIVideo } from/,
+              `import { ${compName} } from "./compositions/${compName}";\nimport { AIVideo } from`
+            )
+            .replace(
+              /    <\/>\n  \);\n\};/,
+              `      <Composition id="${compName}" component={${compName}} durationInFrames={300} fps={30} width={1080} height={1080} defaultProps={{}} />\n    </>\n  );\n};`
+            );
+          fs.writeFileSync(rootPath, newRoot);
+          send({ type: "file_written", path: "remotion/Root.tsx" });
+        }
+      }
+
+      // 7. Validate with remotion still
+      send({ type: "status", text: "Validating with Remotion…" });
+      const compId = outPath.includes("SocialReel") ? "SocialReel-tiktok"
+        : outPath.includes("LogoReveal") ? "LogoReveal"
+        : outPath.includes("AIVideo") ? "AIVideo"
+        : path.basename(outPath, ".tsx");
+
+      const validation = runCmd(`remotion still remotion/index.ts ${compId} --frame=30 --scale=0.25 --output=out/preview-${compId}.png`);
+      const success = !validation.toLowerCase().includes("error") && !validation.toLowerCase().includes("failed");
+
+      send({ type: "validation", success, output: validation.slice(-400), compId });
       send({ type: "done" });
       ctrl.close();
     },

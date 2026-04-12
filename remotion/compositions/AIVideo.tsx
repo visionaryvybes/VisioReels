@@ -44,7 +44,7 @@ function Word({
     config: { damping: 18, stiffness: 220, mass: 0.6 },
   });
 
-  const y   = interpolate(s, [0, 1], [28, 0]);
+  const y = interpolate(s, [0, 1], [28, 0]);
   const opacity = interpolate(s, [0, 1], [0, 1]);
   const scale = interpolate(s, [0, 1], [0.75, 1]);
 
@@ -125,14 +125,14 @@ function Slide({
 function Background({ frame, totalFrames }: { frame: number; totalFrames: number }) {
   const progress = frame / totalFrames;
 
-  // Slowly shifting gradient
-  const hue = interpolate(progress, [0, 1], [260, 200], { extrapolateRight: "clamp" });
-  const hue2 = interpolate(progress, [0, 1], [230, 280], { extrapolateRight: "clamp" });
+  // Slowly shifting gradient (Darker and more purple)
+  const hue = interpolate(progress, [0, 1], [270, 220], { extrapolateRight: "clamp" });
+  const hue2 = interpolate(progress, [0, 1], [250, 300], { extrapolateRight: "clamp" });
 
   return (
     <AbsoluteFill
       style={{
-        background: `radial-gradient(ellipse at 30% 40%, hsl(${hue},80%,8%) 0%, hsl(${hue2},60%,4%) 60%, #000 100%)`,
+        background: `radial-gradient(ellipse at 30% 40%, hsl(${hue}, 70%, 4%) 0%, hsl(${hue2}, 50%, 2%) 60%, #000 100%)`,
       }}
     />
   );
