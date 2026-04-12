@@ -136,7 +136,7 @@ function Hero() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.08 }}
-        className="text-[36px] sm:text-[44px] font-black tracking-tighter leading-none mb-3"
+        className="text-[38px] font-black tracking-tighter leading-none mb-3"
         style={{ color: "#f0f0f0" }}
       >
         AI-Powered
@@ -149,7 +149,7 @@ function Hero() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.16 }}
-        className="text-[14px] sm:text-[15px] font-medium leading-relaxed mb-6 max-w-[420px] mx-auto"
+        className="text-[14px] font-medium leading-relaxed mb-6"
         style={{ color: "#666" }}
       >
         Drop a Midjourney image → Gemma 4 writes the script → Remotion renders the video
@@ -287,8 +287,9 @@ function AppHeader({
 }) {
   return (
     <header
-      className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 sm:px-6 h-14"
+      className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between h-14"
       style={{
+        paddingLeft: 20, paddingRight: 20,
         background: "rgba(8,8,8,0.88)",
         borderBottom: "1px solid rgba(255,255,255,0.07)",
         backdropFilter: "blur(24px)",
@@ -997,12 +998,12 @@ export default function VisioReelsPage() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg)" }}>
+    <div className="min-h-screen" style={{ background: "var(--bg)", overflowX: "hidden" }}>
       <Background moodAccent={moodAccent} />
       <AppHeader ollamaConnected={ollamaConnected} currentStep={currentStep} />
 
-      <main className="relative z-10 pt-14 pb-28">
-        <div className="max-w-[620px] mx-auto px-4 sm:px-6 py-8 space-y-4">
+      <main className="relative z-10" style={{ paddingTop: 56, paddingBottom: 96, display: "flex", justifyContent: "center", alignItems: "flex-start", overflowX: "hidden" }}>
+        <div className="w-full space-y-4" style={{ maxWidth: 560, padding: "28px 16px 0" }}>
 
           {/* ── Hero (shown only on step 1) ───────────────────────── */}
           <AnimatePresence>
@@ -1027,7 +1028,7 @@ export default function VisioReelsPage() {
           <AnimatePresence>
             {currentStep === 1 && (
               <Card key="upload">
-                <div className="p-6 sm:p-8">
+                <div className="p-5">
                   <SectionHead step={1} title="Upload your images" subtitle="Drop 1–5 Midjourney images · Multiple = multi-cut video" />
 
                   <motion.div
@@ -1102,9 +1103,9 @@ export default function VisioReelsPage() {
           <AnimatePresence>
             {currentStep >= 2 && !script && (
               <Card key="platform">
-                <div className="p-6 sm:p-8">
+                <div className="p-5">
                   <SectionHead step={2} title="Choose platform" subtitle="Where is this video going?" />
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 gap-3">
                     {PLATFORMS.map(p => (
                       <PlatformCard
                         key={p.id}
@@ -1126,9 +1127,9 @@ export default function VisioReelsPage() {
           <AnimatePresence>
             {currentStep >= 3 && !script && (
               <Card key="mood">
-                <div className="p-6 sm:p-8">
+                <div className="p-5">
                   <SectionHead step={3} title="Effect preset" subtitle="Each preset applies cinematic effects to your video" />
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 gap-3">
                     {MOODS.map(m => (
                       <MoodCard
                         key={m.id}
@@ -1150,7 +1151,7 @@ export default function VisioReelsPage() {
           <AnimatePresence>
             {currentStep >= 4 && !script && (
               <Card key="generate" accent="#3b82f6" glow="rgba(59,130,246,0.06)">
-                <div className="p-6 sm:p-8">
+                <div className="p-5">
                   <SectionHead step={4} title="Generate script" subtitle="Gemma 4 writes your hook, voiceover & captions" />
 
                   {/* Selection summary */}
@@ -1234,7 +1235,7 @@ export default function VisioReelsPage() {
           <AnimatePresence>
             {script && (
               <Card key="script">
-                <div className="p-6 sm:p-8">
+                <div className="p-5">
                   <SectionHead
                     step={5}
                     title="Your script"
@@ -1276,7 +1277,7 @@ export default function VisioReelsPage() {
           <AnimatePresence>
             {currentStep >= 6 && script && (
               <Card key="render" accent="rgba(34,197,94,0.6)">
-                <div className="p-6 sm:p-8">
+                <div className="p-5">
                   <SectionHead step={6} title="Render" subtitle="Export to MP4 with Remotion" />
 
                   {renderError && <ErrAlert msg={renderError} />}
@@ -1410,7 +1411,7 @@ export default function VisioReelsPage() {
                 {/* Top accent */}
                 <div className="absolute top-0 left-0 right-0 h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(34,197,94,0.6), transparent)" }} />
 
-                <div className="p-6 sm:p-8">
+                <div className="p-5">
                   <div className="flex items-center gap-3 mb-6">
                     <div
                       className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"

@@ -1,9 +1,9 @@
 import React from "react";
 import { Composition } from "remotion";
 import { SocialReel } from "./compositions/SocialReel";
+import { LogoReveal } from "./compositions/LogoReveal";
 import { PLATFORMS } from "../lib/platforms";
 
-// Cast required for Remotion's Composition generic — double-cast via unknown
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const SocialReelComponent = SocialReel as unknown as React.ComponentType<any>;
 
@@ -33,12 +33,19 @@ export const RemotionRoot: React.FC = () => {
           fps={platform.fps}
           width={platform.width}
           height={platform.height}
-          defaultProps={{
-            ...defaultProps,
-            platform: platform.id,
-          }}
+          defaultProps={{ ...defaultProps, platform: platform.id }}
         />
       ))}
+
+      <Composition
+        id="LogoReveal"
+        component={LogoReveal}
+        durationInFrames={90}
+        fps={30}
+        width={1080}
+        height={1080}
+        defaultProps={{}}
+      />
     </>
   );
 };

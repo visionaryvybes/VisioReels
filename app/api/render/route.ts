@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
 
-// Allow up to 5 minutes for rendering
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
@@ -12,11 +11,7 @@ interface VideoScript {
   captions: string[];
   hashtags: string[];
   cta?: string;
-  style: {
-    transition: string;
-    textStyle: string;
-    colorGrade: string;
-  };
+  style: { transition: string; textStyle: string; colorGrade: string };
 }
 
 interface RenderRequest {
@@ -49,9 +44,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const allImages: string[] = body.imageDataUrls?.length
       ? body.imageDataUrls
-      : body.imageDataUrl
-        ? [body.imageDataUrl]
-        : [];
+      : body.imageDataUrl ? [body.imageDataUrl] : [];
 
     if (!script || allImages.length === 0 || !platform || !mood) {
       return NextResponse.json(
@@ -70,27 +63,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const outputPath = `/tmp/visio-reels-${Date.now()}.mp4`;
 
-    // Use Brave Browser on macOS (Chromium-based) if Chrome not available
-    const BRAVE_PATH = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
-    const browserExecutable = fs.existsSync(BRAVE_PATH) ? BRAVE_PATH : undefined;
-
-    // ── Load @remotion/bundler ──────────────────────────────────────────────
-    let bundleFn: (opts: {
-      entryPoint: string;
-      webpackOverride?: (config: unknown) => unknown;
-    }) => Promise<string>;
-
+    // ── Load modules ───────────────────────────────────────────────────────────
+    let bundleFn: (opts: { entryPoint: string; webpackOverride?: (c: unknown) => unknown }) => Promise<string>;
     try {
       const m = await import("@remotion/bundler" as string);
       bundleFn = (m as { bundle: typeof bundleFn }).bundle;
     } catch {
-      return NextResponse.json(
-        { error: "@remotion/bundler not installed. Run: npm install @remotion/bundler" },
-        { status: 501 }
-      );
+      return NextResponse.json({ error: "@remotion/bundler not installed" }, { status: 501 });
     }
 
-    // ── Load @remotion/renderer ─────────────────────────────────────────────
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let rendererMod: Record<string, any>;
     try {
@@ -99,32 +80,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "@remotion/renderer failed to load" }, { status: 501 });
     }
 
-    // ── Ensure browser is ready ─────────────────────────────────────────────
-    if (!browserExecutable && typeof rendererMod.ensureBrowser === "function") {
-      try {
-        await rendererMod.ensureBrowser({ logLevel: "verbose" });
-        console.log("[render] Bundled browser ready");
-      } catch (e) {
-        console.warn("[render] ensureBrowser warning (non-fatal):", e);
-      }
-    } else if (browserExecutable) {
-      console.log("[render] Using Brave Browser at:", browserExecutable);
+    // ── Ensure the correct Chrome (Google Chrome for Testing) is available ─────
+    // This downloads a Remotion-compatible Chrome if needed (~300MB, one-time)
+    try {
+      await rendererMod.ensureBrowser({ logLevel: "warn" });
+      console.log("[render] Chrome for Testing ready");
+    } catch (e) {
+      console.warn("[render] ensureBrowser warning:", e);
     }
 
-    const renderMediaFn = rendererMod.renderMedia as (opts: Record<string, unknown>) => Promise<void>;
-    const selectCompositionFn = rendererMod.selectComposition as (opts: Record<string, unknown>) => Promise<unknown>;
-
-    // ── Bundle ──────────────────────────────────────────────────────────────
+    // ── Bundle ─────────────────────────────────────────────────────────────────
     const remotionRoot = path.resolve(process.cwd(), "remotion/index.ts");
     let bundled: string;
     try {
-      bundled = await bundleFn({
-        entryPoint: remotionRoot,
-        webpackOverride: (config) => config,
-      });
+      bundled = await bundleFn({ entryPoint: remotionRoot, webpackOverride: (c) => c });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return NextResponse.json({ error: `Bundle failed: ${msg}` }, { status: 500 });
+      return NextResponse.json({ error: `Bundle failed: ${err instanceof Error ? err.message : err}` }, { status: 500 });
     }
 
     const inputProps: Record<string, unknown> = {
@@ -132,8 +103,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       captions: script.captions,
       imageSrc: allImages[0],
       imageSrcs: allImages,
-      platform,
-      mood,
+      platform, mood,
       hook: script.hook,
       cta: script.cta ?? "",
       style: script.style,
@@ -141,32 +111,29 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       sfxVolume: body.sfxVolume ?? 0.7,
     };
 
-    const compositionId = `SocialReel-${platform}`;
-
-    // ── Select composition ──────────────────────────────────────────────────
+    // ── Select composition ─────────────────────────────────────────────────────
     let composition: unknown;
     try {
-      composition = await selectCompositionFn({
+      composition = await rendererMod.selectComposition({
         serveUrl: bundled,
-        id: compositionId,
+        id: `SocialReel-${platform}`,
         inputProps,
-        timeoutInMilliseconds: 60000,
-        ...(browserExecutable ? { browserExecutable } : {}),
+        timeoutInMilliseconds: 90000,
         chromiumOptions: {
           disableWebSecurity: true,
           ignoreCertificateErrors: true,
-          headless: true,
-          gl: "angle",
         },
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return NextResponse.json({ error: `Select composition failed: ${msg}` }, { status: 500 });
+      return NextResponse.json(
+        { error: `Select composition failed: ${err instanceof Error ? err.message : err}` },
+        { status: 500 }
+      );
     }
 
-    // ── Render ──────────────────────────────────────────────────────────────
+    // ── Render ─────────────────────────────────────────────────────────────────
     try {
-      await renderMediaFn({
+      await rendererMod.renderMedia({
         composition,
         serveUrl: bundled,
         codec: "h264",
@@ -176,18 +143,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         jpegQuality: 85,
         concurrency: 1,
         timeoutInMilliseconds: 240000,
-        ...(browserExecutable ? { browserExecutable } : {}),
         chromiumOptions: {
           disableWebSecurity: true,
           ignoreCertificateErrors: true,
-          headless: true,
-          gl: "angle",
         },
         ...dims,
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return NextResponse.json({ error: `Render failed: ${msg}` }, { status: 500 });
+      return NextResponse.json(
+        { error: `Render failed: ${err instanceof Error ? err.message : err}` },
+        { status: 500 }
+      );
     }
 
     if (!fs.existsSync(outputPath)) {
@@ -207,7 +173,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[render] Unexpected error:", message);
+    console.error("[render] Error:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

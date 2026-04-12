@@ -6,7 +6,10 @@
     "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "studio": "remotion studio remotion/index.ts",
+    "still": "remotion still remotion/index.ts",
+    "render": "remotion render remotion/index.ts"
   },
   "dependencies": {
     "@remotion/bundler": "^4.0.448",
@@ -16,16 +19,17 @@
     "lucide-react": "^1.8.0",
     "next": "16.2.3",
     "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "remotion": "^4.0.448"
+    "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@remotion/cli": "^4.0.448",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
+    "remotion": "^4.0.448",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

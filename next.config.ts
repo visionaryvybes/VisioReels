@@ -15,6 +15,9 @@ const nextConfig: NextConfig = {
   // webpack config is only used for server-side rendering path
   turbopack: {},
 
+  // Suppress preload resource warnings in dev
+  reactStrictMode: false,
+
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve = config.resolve ?? {};
