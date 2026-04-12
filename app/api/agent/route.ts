@@ -4,65 +4,67 @@ import path from "path";
 import { execSync } from "child_process";
 
 const PROJECT_DIR = process.cwd();
+const BIN         = path.join(PROJECT_DIR, "node_modules/.bin");
 const OLLAMA_URL  = "http://localhost:11434/api/chat";
 const MODEL       = "gemma4:e4b";
 
-// ── System prompt (remotion-dev/skills) ──────────────────────────────────────
+// ── System prompt ─────────────────────────────────────────────────────────────
+// Minimal and directive. Gemma 4B must not ramble.
 
-const SYSTEM_PROMPT = `You are a Remotion video-creation agent. You help build programmatic videos using React and Remotion by reading and editing TypeScript files and running shell commands.
+const SYSTEM_PROMPT = `You are a Remotion code-writing agent. Your ONLY job is to write and edit TypeScript/TSX files.
 
-Project directory: ${PROJECT_DIR}
+STRICT RULES:
+- NEVER write reviews, analysis, or explanations. ONLY write code.
+- Read a file at most ONCE. Then immediately write the updated version.
+- After writing a file, call run_command to validate. Then STOP.
+- If asked to add a feature: read the file → rewrite it → validate → done.
+- Do NOT list files unless you have no idea what exists.
 
-## Workflow
-1. Read files before editing them.
-2. Write/update TSX files in remotion/ directory.
-3. After every change validate: run_command → remotion still remotion/index.ts <id> --frame=30 --scale=0.25
-4. Render: run_command → remotion render remotion/index.ts <id> out/<name>.mp4
+PROJECT: ${PROJECT_DIR}
+REMOTION ENTRY: remotion/index.ts
+COMPOSITIONS: remotion/Root.tsx + remotion/compositions/
 
-## Animation Rules (CRITICAL)
-- ALL animations MUST use useCurrentFrame() — no exceptions.
-- Import: import { useCurrentFrame, useVideoConfig, interpolate, spring, Easing } from "remotion"
-- Durations: const { fps } = useVideoConfig(); const DUR = 2 * fps;
-- interpolate with clamping: interpolate(frame, [0, DUR], [0, 1], { extrapolateRight: "clamp", easing: Easing.bezier(0.16, 1, 0.3, 1) })
-- Easing: Crisp=Easing.bezier(0.16,1,0.3,1) Editorial=Easing.bezier(0.45,0,0.55,1) Overshoot=Easing.bezier(0.34,1.56,0.64,1)
-- Springs: spring({ frame, fps, config: { damping: 12, stiffness: 180 } })
-- FORBIDDEN: CSS transitions, CSS animations, Tailwind animation classes.
+ANIMATION RULES (mandatory):
+- All animations: useCurrentFrame() + interpolate() or spring()
+- Import: import { useCurrentFrame, useVideoConfig, interpolate, spring, Easing, AbsoluteFill, Sequence } from "remotion"
+- Durations: const { fps } = useVideoConfig(); const DUR = N * fps;
+- Clamp all interpolations: { extrapolateRight: "clamp" }
+- NEVER use CSS transitions or CSS animations — they break rendering
+- Springs: spring({ frame, fps, config: { damping: 14, stiffness: 160 } })
+- Easing: Easing.bezier(0.16, 1, 0.3, 1) for entrances
 
-## Compositions (remotion/Root.tsx)
-<Composition id="MyVideo" component={C} durationInFrames={150} fps={30} width={1080} height={1920} defaultProps={{}} />
+WORD-BY-WORD CAPTIONS pattern:
+\`\`\`tsx
+const words = captions; // string[]
+{words.map((word, i) => {
+  const start = i * wordInterval;
+  const wordSpring = spring({ frame: Math.max(0, frame - start), fps, config: { damping: 20, stiffness: 200 } });
+  const wordY = interpolate(wordSpring, [0, 1], [20, 0]);
+  const wordOpacity = interpolate(wordSpring, [0, 1], [0, 1]);
+  return (
+    <span key={i} style={{ display: 'inline-block', transform: \`translateY(\${wordY}px)\`, opacity: wordOpacity, marginRight: 8 }}>
+      {word}
+    </span>
+  );
+})}
+\`\`\`
 
-## Sequencing
-- <Sequence from={N} durationInFrames={M} premountFor={20}> — always premountFor
-- useCurrentFrame() inside Sequence = relative frames from 0
-- <Series> for back-to-back scenes
+VALIDATE: run_command → remotion still remotion/index.ts <CompositionId> --frame=30 --scale=0.25
+RENDER:   run_command → remotion render remotion/index.ts <CompositionId> out/<name>.mp4
 
-## Timing
-const p = interpolate(frame,[0,fps*1.5],[0,1],{extrapolateRight:"clamp"});
-const opacity=p; const y=interpolate(p,[0,1],[40,0]); const scale=interpolate(p,[0,1],[0.9,1]);
-
-## Fonts
-import { loadFont } from "@remotion/google-fonts/Inter"; const { fontFamily } = loadFont();
-
-## Layout
-<AbsoluteFill> as outermost wrapper always.
-
-## Existing Compositions
-SocialReel-tiktok 1080×1920 30fps 450f | SocialReel-reels 1080×1920 | SocialReel-shorts 1080×1920 | SocialReel-pinterest 1000×1500 300f | SocialReel-x 1280×720 270f
-
-## Tool Format — use EXACTLY this, one tool per response:
-<tool>read_file</tool><path>remotion/Root.tsx</path>
-<tool>write_file</tool><path>remotion/compositions/MyScene.tsx</path><content>// code</content>
-<tool>run_command</tool><cmd>npm run still -- --composition=SocialReel-tiktok --frame=30 --scale=0.25</cmd>
-<tool>list_files</tool><path>remotion/</path>
-
-After each tool, wait for the result. When done, summarize what was built.`;
+TOOL FORMAT — use exactly this XML, one tool per message:
+<tool>read_file</tool><path>remotion/compositions/SocialReel.tsx</path>
+<tool>write_file</tool><path>remotion/compositions/SocialReel.tsx</path><content>
+FULL FILE CONTENT HERE
+</content>
+<tool>run_command</tool><cmd>remotion still remotion/index.ts SocialReel-tiktok --frame=30 --scale=0.25</cmd>
+<tool>list_files</tool><path>remotion/</path>`.trim();
 
 // ── Tools ─────────────────────────────────────────────────────────────────────
 
 function readFile(p: string) {
   const full = path.isAbsolute(p) ? p : path.join(PROJECT_DIR, p);
-  try { return fs.readFileSync(full, "utf-8"); }
-  catch { return `ERROR: not found: ${full}`; }
+  try { return fs.readFileSync(full, "utf-8"); } catch { return `ERROR: not found: ${full}`; }
 }
 
 function writeFile(p: string, content: string) {
@@ -73,17 +75,12 @@ function writeFile(p: string, content: string) {
 }
 
 function runCmd(cmd: string) {
-  const BIN = path.join(PROJECT_DIR, "node_modules/.bin");
-  const finalCmd = cmd.replace(/^remotion\b/, `${BIN}/remotion`);
+  const resolved = cmd.replace(/^remotion\b/, `${BIN}/remotion`);
   try {
-    const out = execSync(finalCmd, {
-      cwd: PROJECT_DIR,
-      timeout: 300_000,
-      encoding: "utf-8",
-      stdio: "pipe",
+    return execSync(resolved, {
+      cwd: PROJECT_DIR, timeout: 300_000, encoding: "utf-8", stdio: "pipe",
       env: { ...process.env, PATH: `${BIN}:${process.env.PATH}` },
-    });
-    return (out || "").slice(0, 2000);
+    }).slice(0, 2000);
   } catch (e: unknown) {
     const err = e as { stdout?: string; stderr?: string; message?: string };
     return ((err.stdout ?? "") + (err.stderr ?? "") || err.message || "failed").slice(0, 2000);
@@ -146,11 +143,10 @@ async function streamOllama(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: MODEL, messages, stream: true,
-      options: { temperature: 0.3, top_p: 0.9, num_ctx: 8192 },
+      options: { temperature: 0.1, top_p: 0.9, num_ctx: 6000 },
     }),
   });
   if (!res.ok || !res.body) throw new Error(`Ollama ${res.status}`);
-
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let full = "";
@@ -160,8 +156,7 @@ async function streamOllama(
     for (const line of dec.decode(value).split("\n")) {
       if (!line.trim()) continue;
       try {
-        const obj = JSON.parse(line);
-        const tok = obj?.message?.content ?? "";
+        const tok = JSON.parse(line)?.message?.content ?? "";
         if (tok) { full += tok; onToken(tok); }
       } catch {}
     }
@@ -169,9 +164,7 @@ async function streamOllama(
   return full;
 }
 
-// ── SSE helper ────────────────────────────────────────────────────────────────
-
-type SSEEvent = Record<string, unknown>;
+// ── Route ─────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   const { messages: history, userMessage } = await req.json();
@@ -179,7 +172,7 @@ export async function POST(req: NextRequest) {
   const enc = new TextEncoder();
   const stream = new ReadableStream({
     async start(ctrl) {
-      const send = (ev: SSEEvent) =>
+      const send = (ev: Record<string, unknown>) =>
         ctrl.enqueue(enc.encode(`data: ${JSON.stringify(ev)}\n\n`));
 
       const msgs: Array<{ role: string; content: string }> = [
@@ -188,9 +181,8 @@ export async function POST(req: NextRequest) {
         { role: "user", content: userMessage },
       ];
 
-      let iter = 0;
-      while (iter < 8) {
-        iter++;
+      let reads = 0;
+      for (let iter = 0; iter < 6; iter++) {
         send({ type: "thinking" });
 
         let response = "";
@@ -202,10 +194,9 @@ export async function POST(req: NextRequest) {
         }
 
         const toolCalls = parseTools(response);
-
         if (!toolCalls.length) {
           const clean = response.replace(/<tool>[\s\S]*?<\/tool>[\s\S]*?(?=<tool>|$)/g, "").trim();
-          send({ type: "message", content: clean });
+          send({ type: "message", content: clean || "Done." });
           msgs.push({ role: "assistant", content: response });
           break;
         }
@@ -215,6 +206,12 @@ export async function POST(req: NextRequest) {
 
         const results: string[] = [];
         for (const call of toolCalls) {
+          // Limit reads to prevent infinite exploration
+          if (call.tool === "read_file") reads++;
+          if (reads > 3) {
+            send({ type: "error", content: "Too many file reads — writing code now." });
+            break;
+          }
           send({ type: "tool_call", tool: call.tool, detail: call.attrs.path ?? call.attrs.cmd ?? "" });
           const result = executeTool(call.tool, call.attrs);
           send({ type: "tool_result", tool: call.tool, result: result.slice(0, 600) });
@@ -231,10 +228,6 @@ export async function POST(req: NextRequest) {
   });
 
   return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-    },
+    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
   });
 }

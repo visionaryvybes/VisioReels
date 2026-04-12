@@ -54,18 +54,22 @@ function RenderPanel() {
 
     const reader = res.body.getReader();
     const dec = new TextDecoder();
+    let buf = "";
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      for (const line of dec.decode(value).split("\n")) {
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+      for (const line of lines) {
         if (!line.startsWith("data: ")) continue;
         try {
           const ev = JSON.parse(line.slice(6));
-          if (ev.type === "start") setRenderLogs((l) => ({ ...l, [composition]: `Running:\n${ev.cmd}` }));
+          if (ev.type === "start") setRenderLogs((l) => ({ ...l, [composition]: `Running…` }));
           if (ev.type === "done") {
             setRenderStates((s) => ({ ...s, [composition]: "done" }));
-            setRenderLogs((l) => ({ ...l, [composition]: `✓ Saved to ${ev.file}\n\n${ev.output}` }));
+            setRenderLogs((l) => ({ ...l, [composition]: `✓ Saved: ${ev.file}` }));
           }
           if (ev.type === "error") {
             setRenderStates((s) => ({ ...s, [composition]: "error" }));
