@@ -10,7 +10,7 @@ const SocialReelComponent = SocialReel as unknown as React.ComponentType<any>;
 const defaultProps = {
   script: "Your video script will appear here. Upload an image and generate a script first.",
   captions: ["Your", "video", "captions", "go here"],
-  imageSrc: "https://placehold.co/1080x1920/09090b/a78bfa?text=VisioReels",
+  imageSrc: "",
   platform: "tiktok",
   mood: "cinematic",
   hook: "Wait for it...",

@@ -1,48 +1,50 @@
 @import "tailwindcss";
 
 :root {
-  /* Surfaces — neutral dark, no blue tint */
-  --bg:        #080808;
-  --s1:        #0f0f0f;
-  --s2:        #161616;
-  --s3:        #1e1e1e;
+  /* Page background */
+  --bg:        #060606;
+
+  /* Surfaces — clearly visible against bg */
+  --s1:        #161616;
+  --s2:        #1e1e1e;
+  --s3:        #282828;
+  --s4:        #323232;
 
   /* Borders */
-  --b0:        rgba(255,255,255,0.04);
-  --b1:        rgba(255,255,255,0.08);
-  --b2:        rgba(255,255,255,0.14);
-  --b3:        rgba(255,255,255,0.24);
+  --b0:        rgba(255,255,255,0.06);
+  --b1:        rgba(255,255,255,0.10);
+  --b2:        rgba(255,255,255,0.16);
+  --b3:        rgba(255,255,255,0.26);
 
   /* Text */
-  --t1:        #f0f0f0;
-  --t2:        #888888;
-  --t3:        #444444;
+  --t1:        #f2f2f2;
+  --t2:        #999999;
+  --t3:        #555555;
+  --t4:        #333333;
 
-  /* Accents — blue/cyan only, no purple */
+  /* Blue accent */
   --blue:      #3b82f6;
   --blue-l:    #60a5fa;
-  --blue-dim:  rgba(59,130,246,0.1);
-  --blue-glow: rgba(59,130,246,0.2);
+  --blue-dim:  rgba(59,130,246,0.12);
+  --blue-glow: rgba(59,130,246,0.22);
 
+  /* Status */
   --green:     #22c55e;
   --red:       #ef4444;
   --amber:     #f59e0b;
 
   /* Glass */
-  --glass:     rgba(255,255,255,0.025);
-  --glass-up:  rgba(255,255,255,0.05);
-
-  /* Legacy compat aliases (wont show purple) */
-  --void: var(--bg);
-  --rim:  var(--b1);
+  --glass:     rgba(255,255,255,0.04);
+  --glass-up:  rgba(255,255,255,0.07);
 }
 
-*,:before,:after { box-sizing: border-box; margin: 0; padding: 0; }
+/* ── Reset ─────────────────────────────────────────────── */
+*, :before, :after { box-sizing: border-box; margin: 0; padding: 0; }
 html { color-scheme: dark; scroll-behavior: smooth; }
 body {
   background: var(--bg);
   color: var(--t1);
-  font-family: var(--font-inter, "Inter"), system-ui, -apple-system, sans-serif;
+  font-family: var(--font-inter, "Inter"), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
@@ -60,72 +62,72 @@ body {
 .bg-canvas::before {
   content: '';
   position: absolute;
-  width: 900px; height: 900px;
+  width: 800px; height: 800px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(59,130,246,0.045) 0%, transparent 65%);
-  top: -350px; left: -250px;
+  background: radial-gradient(circle, rgba(59,130,246,0.055) 0%, transparent 65%);
+  top: -300px; left: -200px;
   animation: orb-a 28s ease-in-out infinite;
 }
 .bg-canvas::after {
   content: '';
   position: absolute;
-  width: 700px; height: 700px;
+  width: 600px; height: 600px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(34,197,94,0.025) 0%, transparent 65%);
-  bottom: -250px; right: -200px;
+  background: radial-gradient(circle, rgba(34,197,94,0.03) 0%, transparent 65%);
+  bottom: -200px; right: -150px;
   animation: orb-b 35s ease-in-out infinite;
 }
 @keyframes orb-a {
   0%,100% { transform: translate(0,0) scale(1); }
-  50%      { transform: translate(100px,70px) scale(1.08); }
+  50%      { transform: translate(80px,60px) scale(1.08); }
 }
 @keyframes orb-b {
   0%,100% { transform: translate(0,0) scale(1); }
-  50%      { transform: translate(-80px,-90px) scale(1.1); }
+  50%      { transform: translate(-60px,-70px) scale(1.1); }
 }
 
-/* ── Noise texture ─────────────────────────────────────── */
+/* ── Noise overlay ─────────────────────────────────────── */
 .noise-overlay {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.014;
+  opacity: 0.018;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
   background-size: 200px 200px;
 }
 
 /* ── Glass ─────────────────────────────────────────────── */
-.glass    { background: var(--glass);    border: 1px solid var(--b1); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
-.glass-up { background: var(--glass-up); border: 1px solid var(--b2); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+.glass    { background: var(--glass);    border: 1px solid var(--b1); backdrop-filter: blur(16px); }
+.glass-up { background: var(--glass-up); border: 1px solid var(--b2); backdrop-filter: blur(20px); }
 
-/* ── Glow utilities ────────────────────────────────────── */
-.glow-blue  { box-shadow: 0 0 32px var(--blue-glow), 0 0 64px rgba(59,130,246,0.08); }
-.glow-green { box-shadow: 0 0 28px rgba(34,197,94,0.2); }
-
-/* ── Text ──────────────────────────────────────────────── */
+/* ── Text gradients ────────────────────────────────────── */
 .text-gradient-blue {
-  background: linear-gradient(135deg, #bfdbfe 0%, #93c5fd 40%, #60a5fa 100%);
+  background: linear-gradient(135deg, #93c5fd 0%, #60a5fa 50%, #3b82f6 100%);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 .text-gradient-white {
-  background: linear-gradient(180deg, #ffffff 0%, #a1a1aa 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #aaaaaa 100%);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
+/* ── Glow utilities ────────────────────────────────────── */
+.glow-blue  { box-shadow: 0 0 32px var(--blue-glow); }
+.glow-green { box-shadow: 0 0 28px rgba(34,197,94,0.22); }
+
 /* ── Scrollbar ─────────────────────────────────────────── */
-::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.09); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
 
 /* ── Selection ─────────────────────────────────────────── */
-::selection { background: rgba(59,130,246,0.28); color: #fff; }
+::selection { background: rgba(59,130,246,0.3); color: #fff; }
 
 /* ── Focus ─────────────────────────────────────────────── */
-:focus-visible { outline: 2px solid var(--blue-l); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--blue-l); outline-offset: 2px; border-radius: 4px; }
 
 /* ── Animations ────────────────────────────────────────── */
 @keyframes shimmer {
@@ -133,57 +135,57 @@ body {
   100% { background-position:  200% center; }
 }
 @keyframes pulse-ring {
-  0%,100% { opacity: 0.5; transform: scale(0.9); }
-  50%      { opacity: 1;   transform: scale(1.1); }
+  0%,100% { opacity: 0.45; transform: scale(0.88); }
+  50%      { opacity: 1;    transform: scale(1.12); }
 }
 @keyframes spin-slow {
   to { transform: rotate(360deg); }
 }
 @keyframes fade-up {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes float-up {
-  0%,100% { transform: translateY(0);  opacity: 0.35; }
-  50%      { transform: translateY(-8px); opacity: 0.8; }
-}
-@keyframes glow-pulse {
-  0%,100% { opacity: 0.3; }
-  50%      { opacity: 0.8; }
+  0%,100% { transform: translateY(0);   opacity: 0.35; }
+  50%      { transform: translateY(-8px); opacity: 0.85; }
 }
 @keyframes grid-drift {
   0%   { background-position: 0 0; }
   100% { background-position: 32px 32px; }
 }
 
-.animate-shimmer    { background-size: 200% auto; animation: shimmer 2.2s linear infinite; }
+.animate-shimmer    { background-size: 200% auto; animation: shimmer 2.4s linear infinite; }
 .animate-pulse-dot  { animation: pulse-ring 2s ease-in-out infinite; }
 .animate-spin-slow  { animation: spin-slow 8s linear infinite; }
 .animate-fade-up    { animation: fade-up 0.35s ease both; }
 .animate-float      { animation: float-up 3.5s ease-in-out infinite; }
-.animate-glow-pulse { animation: glow-pulse 2.5s ease-in-out infinite; }
 
-/* ── Upload zone grid ──────────────────────────────── */
+/* ── Upload zone animated grid ─────────────────────────── */
 .upload-grid {
   background-image:
-    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
-  background-size: 32px 32px;
-  animation: grid-drift 8s linear infinite;
+    linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+  background-size: 36px 36px;
+  animation: grid-drift 10s linear infinite;
 }
 
-/* ── Feature tag ───────────────────────────────────── */
+/* ── Feature tag pill ──────────────────────────────────── */
 .feat-tag {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  font-size: 10px;
+  padding: 5px 11px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  color: #666;
+  letter-spacing: 0.03em;
+  color: #888;
   white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.feat-tag:hover {
+  background: rgba(255,255,255,0.1);
+  color: #ccc;
 }

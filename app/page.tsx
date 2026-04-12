@@ -337,8 +337,8 @@ function AppHeader({
       <div
         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg flex-shrink-0 text-[11px] font-medium"
         style={{
-          background: "#141414",
-          border: "1px solid rgba(255,255,255,0.09)",
+          background: "var(--s1)",
+          border: "1px solid var(--b1)",
         }}
       >
         {ollamaConnected === null ? (
@@ -375,11 +375,11 @@ function Card({
       {...FU}
       className="rounded-2xl relative overflow-hidden"
       style={{
-        background: "linear-gradient(160deg, #191919 0%, #141414 100%)",
-        border: `1px solid ${accent ? `${accent}35` : "rgba(255,255,255,0.11)"}`,
+        background: "var(--s1)",
+        border: `1px solid ${accent ? `${accent}38` : "var(--b2)"}`,
         boxShadow: glow
-          ? `0 0 60px ${glow}, 0 1px 0 rgba(255,255,255,0.06) inset`
-          : "0 1px 0 rgba(255,255,255,0.06) inset, 0 4px 24px rgba(0,0,0,0.4)",
+          ? `0 0 60px ${glow}, 0 1px 0 rgba(255,255,255,0.07) inset`
+          : "0 1px 0 rgba(255,255,255,0.07) inset, 0 2px 16px rgba(0,0,0,0.35)",
       }}
     >
       {/* Top accent shimmer */}
@@ -701,7 +701,7 @@ function ScriptDisplay({
       </div>
 
       {/* Voiceover */}
-      <div className="rounded-xl p-4" style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)" }}>
+      <div className="rounded-xl p-4" style={{ background: "var(--s2)", border: "1px solid var(--b1)" }}>
         <div className="text-[9px] font-black uppercase tracking-[0.18em] mb-2" style={{ color: "#444" }}>VOICEOVER</div>
         <textarea
           value={script.script}
@@ -713,7 +713,7 @@ function ScriptDisplay({
       </div>
 
       {/* CTA */}
-      <div className="rounded-xl p-3.5" style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)" }}>
+      <div className="rounded-xl p-3.5" style={{ background: "var(--s2)", border: "1px solid var(--b1)" }}>
         <div className="text-[9px] font-black uppercase tracking-[0.18em] mb-1.5" style={{ color: "#444" }}>CALL TO ACTION</div>
         <input
           value={script.cta ?? ""}
@@ -725,7 +725,7 @@ function ScriptDisplay({
       </div>
 
       {/* Captions */}
-      <div className="rounded-xl p-4" style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)" }}>
+      <div className="rounded-xl p-4" style={{ background: "var(--s2)", border: "1px solid var(--b1)" }}>
         <div className="text-[9px] font-black uppercase tracking-[0.18em] mb-3" style={{ color: "#444" }}>
           CAPTIONS · {script.captions.length} beats
         </div>
@@ -744,7 +744,7 @@ function ScriptDisplay({
 
       {/* Hashtags + style */}
       <div className="grid grid-cols-2 gap-2.5">
-        <div className="rounded-xl p-3.5" style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)" }}>
+        <div className="rounded-xl p-3.5" style={{ background: "var(--s2)", border: "1px solid var(--b1)" }}>
           <div className="text-[9px] font-black uppercase tracking-[0.18em] mb-2" style={{ color: "#444" }}>HASHTAGS</div>
           <div className="flex flex-wrap gap-1">
             {script.hashtags.map((h, i) => (
@@ -754,7 +754,7 @@ function ScriptDisplay({
             ))}
           </div>
         </div>
-        <div className="rounded-xl p-3.5" style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)" }}>
+        <div className="rounded-xl p-3.5" style={{ background: "var(--s2)", border: "1px solid var(--b1)" }}>
           <div className="text-[9px] font-black uppercase tracking-[0.18em] mb-2" style={{ color: "#444" }}>STYLE</div>
           <div className="space-y-1 text-[11px] font-medium" style={{ color: "#666" }}>
             <div>↗ {script.style?.transition ?? "—"}</div>
@@ -789,8 +789,8 @@ function ResPicker({
           onClick={() => onChange(null)}
           className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all"
           style={{
-            background: value === null ? "#1e1e1e" : "#141414",
-            border: `1px solid ${value === null ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.08)"}`,
+            background: value === null ? "var(--s3)" : "var(--s2)",
+            border: `1px solid ${value === null ? "var(--b3)" : "var(--b1)"}`,
             color: value === null ? "#ddd" : "#555",
           }}
         >
@@ -1157,7 +1157,7 @@ export default function VisioReelsPage() {
                   {platformObj && moodObj && (
                     <div
                       className="flex items-center gap-3 p-3.5 rounded-xl mb-5"
-                      style={{ background: "#1c1c1c", border: "1px solid rgba(255,255,255,0.1)" }}
+                      style={{ background: "var(--s2)", border: "1px solid var(--b1)" }}
                     >
                       {imageDataUrls[0] && (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -1285,7 +1285,7 @@ export default function VisioReelsPage() {
                   {platformObj && (
                     <div
                       className="flex items-center gap-2.5 p-3 rounded-xl mb-5"
-                      style={{ background: "#1c1c1c", border: "1px solid rgba(255,255,255,0.1)" }}
+                      style={{ background: "var(--s2)", border: "1px solid var(--b1)" }}
                     >
                       <Clapperboard size={13} style={{ color: "#555" }} />
                       <span className="text-[12px] font-semibold" style={{ color: "#777" }}>
@@ -1361,7 +1361,7 @@ export default function VisioReelsPage() {
                         </span>
                         <span className="font-mono tabular-nums">{Math.round(renderProgress)}%</span>
                       </div>
-                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "#1e1e1e" }}>
+                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--s3)" }}>
                         <motion.div
                           animate={{ width: `${renderProgress}%` }}
                           transition={{ duration: 0.5, ease: "linear" }}
