@@ -127,6 +127,8 @@ export function Topbar() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {editing ? (
           <input
+            id="project-name"
+            name="project-name"
             ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}

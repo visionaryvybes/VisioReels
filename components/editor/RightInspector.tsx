@@ -278,6 +278,8 @@ export function RightInspector() {
               </span>
             </div>
             <input
+              id="crf-slider"
+              name="crf-slider"
               type="range"
               min={15}
               max={28}

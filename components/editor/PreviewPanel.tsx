@@ -145,6 +145,7 @@ export function PreviewPanel() {
     compositionConfig,
     generationPhase,
     generationStatus,
+    streamingTokens,
     elapsed,
     lastError,
     setPreviewFrame,
@@ -349,6 +350,8 @@ export function PreviewPanel() {
 
             {/* Scrubber */}
             <input
+              id="preview-scrubber"
+              name="preview-scrubber"
               type="range"
               min={0}
               max={config.durationInFrames - 1}
@@ -381,7 +384,7 @@ export function PreviewPanel() {
             style={{
               position: 'absolute',
               inset: 0,
-              background: 'rgba(8,8,8,0.85)',
+              background: '#080808',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -390,43 +393,101 @@ export function PreviewPanel() {
               backdropFilter: 'blur(4px)',
             }}
           >
-            {/* Bouncing dots */}
-            <div style={{ display: 'flex', gap: 6 }}>
+            {/* Header row */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginBottom: 4,
+              }}
+            >
               {[0, 1, 2].map((i) => (
                 <motion.div
                   key={i}
-                  animate={{ y: [0, -10, 0] }}
+                  animate={{ y: [0, -8, 0] }}
                   transition={{ repeat: Infinity, duration: 0.8, delay: i * 0.15 }}
                   style={{
-                    width: 8,
-                    height: 8,
+                    width: 7,
+                    height: 7,
                     borderRadius: '50%',
                     background: '#a78bfa',
                   }}
                 />
               ))}
-            </div>
-            <div
-              style={{
-                fontSize: 13,
-                fontFamily: 'var(--font-dm-sans), system-ui, sans-serif',
-                color: 'rgba(255,255,255,0.7)',
-                maxWidth: 280,
-                textAlign: 'center',
-                lineHeight: 1.5,
-              }}
-            >
-              {generationStatus || 'Generating…'}
-            </div>
-            {elapsed > 0 && (
-              <div
+              <span
                 style={{
                   fontSize: 12,
-                  fontFamily: 'var(--font-dm-mono), monospace',
-                  color: 'rgba(255,255,255,0.3)',
+                  fontFamily: 'var(--font-dm-sans), system-ui, sans-serif',
+                  color: 'rgba(255,255,255,0.6)',
+                  marginLeft: 4,
                 }}
               >
-                {elapsed}s elapsed
+                {generationStatus || 'Generating…'}
+              </span>
+              {elapsed > 0 && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontFamily: 'var(--font-dm-mono), monospace',
+                    color: 'rgba(255,255,255,0.25)',
+                    marginLeft: 'auto',
+                  }}
+                >
+                  {elapsed}s
+                </span>
+              )}
+            </div>
+
+            {/* Live code stream */}
+            {streamingTokens ? (
+              <div
+                style={{
+                  width: '100%',
+                  maxWidth: 520,
+                  background: 'rgba(0,0,0,0.6)',
+                  border: '1px solid rgba(167,139,250,0.2)',
+                  borderRadius: 8,
+                  padding: '12px 14px',
+                  maxHeight: 320,
+                  overflowY: 'auto',
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 9,
+                    fontFamily: 'var(--font-dm-mono), monospace',
+                    color: 'rgba(167,139,250,0.5)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    marginBottom: 8,
+                  }}
+                >
+                  Gemma · writing remotion tsx
+                </div>
+                <pre
+                  style={{
+                    margin: 0,
+                    fontSize: 11,
+                    fontFamily: 'var(--font-dm-mono), monospace',
+                    color: 'rgba(167,139,250,0.9)',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-all',
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {streamingTokens}
+                </pre>
+              </div>
+            ) : (
+              <div
+                style={{
+                  fontSize: 11,
+                  fontFamily: 'var(--font-dm-mono), monospace',
+                  color: 'rgba(255,255,255,0.2)',
+                }}
+              >
+                waiting for Gemma…
               </div>
             )}
           </motion.div>
