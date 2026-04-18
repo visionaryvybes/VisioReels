@@ -217,11 +217,21 @@ const SceneFrame: React.FC<{ scene: ResolvedScene; sceneLen: number }> = ({
   const tx = scene.burnFrom[1] + (scene.burnTo[1] - scene.burnFrom[1]) * t;
   const ty = scene.burnFrom[2] + (scene.burnTo[2] - scene.burnFrom[2]) * t;
 
+  const { width, height } = useVideoConfig();
+
   const words = scene.caption.split(" ");
   const kickerSlide = useSpringAnim(4, 40, 0, 18);
   const kickerOpacity = useSpringAnim(4, 0, 1, 18);
 
-  const letterSpacing = interpolate(frame, [0, sceneLen], [14, 22], {
+  // All sizes + positions scale with height so they work across 9:16, 1:1, 4:5, 16:9.
+  const fontSize = Math.round(height * 0.052);      // 100px @ 1920, 56px @ 1080
+  const captionBottom = Math.round(height * 0.16);  // 307px @ 1920, 173px @ 1080
+  const kickerBottom = Math.round(height * 0.07);   // 134px @ 1920, 76px @ 1080
+  const barBottom = Math.round(height * 0.28);      // 538px @ 1920, 302px @ 1080
+  const wordGap = Math.round(height * 0.008);       // 15px @ 1920, 9px @ 1080
+  const maxCaptionWidth = Math.round(width * 0.88); // never overflow the frame
+
+  const letterSpacing = interpolate(frame, [0, sceneLen], [6, 10], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: Easing.out(Easing.cubic),
@@ -284,11 +294,11 @@ const SceneFrame: React.FC<{ scene: ResolvedScene; sceneLen: number }> = ({
         }}
       />
 
-      {/* Bottom gradient for legibility */}
+      {/* Bottom gradient — taller scrim so text always sits in dark zone */}
       <AbsoluteFill
         style={{
           background:
-            "linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.35) 30%, transparent 55%)",
+            "linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.6) 22%, rgba(0,0,0,0.15) 42%, transparent 58%)",
         }}
       />
 
@@ -296,29 +306,31 @@ const SceneFrame: React.FC<{ scene: ResolvedScene; sceneLen: number }> = ({
       <div
         style={{
           position: "absolute",
-          bottom: 360,
-          left: "10%",
-          width: `${barWidth * 80}%`,
-          height: 3,
+          bottom: barBottom,
+          left: "8%",
+          width: `${barWidth * 84}%`,
+          height: 2,
           background: scene.accent,
-          boxShadow: `0 0 20px ${scene.accent}`,
+          boxShadow: `0 0 14px ${scene.accent}`,
           borderRadius: 2,
         }}
       />
 
-      {/* Caption — word-by-word spring reveal */}
+      {/* Caption — word-by-word spring reveal, bottom-anchored */}
       <div
         style={{
           position: "absolute",
-          bottom: 230,
+          bottom: captionBottom,
           left: 0,
           right: 0,
-          textAlign: "center",
-          padding: "0 40px",
           display: "flex",
           flexWrap: "wrap",
           justifyContent: "center",
-          gap: 24,
+          alignItems: "flex-end",
+          gap: wordGap,
+          padding: `0 ${Math.round(width * 0.06)}px`,
+          maxWidth: maxCaptionWidth,
+          margin: "0 auto",
         }}
       >
         {words.map((word, i) => {
@@ -326,7 +338,7 @@ const SceneFrame: React.FC<{ scene: ResolvedScene; sceneLen: number }> = ({
           const wordY = interpolate(
             frame,
             [wordStart, wordStart + 18],
-            [80, 0],
+            [50, 0],
             {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",
@@ -347,15 +359,15 @@ const SceneFrame: React.FC<{ scene: ResolvedScene; sceneLen: number }> = ({
               key={i}
               style={{
                 display: "inline-block",
-                fontSize: 128,
+                fontSize,
                 fontWeight: 900,
                 color: "#fff",
                 letterSpacing,
                 textTransform: "uppercase",
                 fontFamily:
                   "var(--font-syne), 'Arial Black', system-ui, sans-serif",
-                lineHeight: 1,
-                textShadow: `0 8px 32px rgba(0,0,0,0.95), 0 0 2px ${scene.accent}`,
+                lineHeight: 1.05,
+                textShadow: `0 4px 20px rgba(0,0,0,0.9), 0 0 2px ${scene.accent}`,
                 transform: `translateY(${wordY}px)`,
                 opacity: wordOp,
                 WebkitTextStroke: "0.5px rgba(255,255,255,0.85)",
@@ -367,28 +379,29 @@ const SceneFrame: React.FC<{ scene: ResolvedScene; sceneLen: number }> = ({
         })}
       </div>
 
-      {/* Kicker subtitle */}
+      {/* Kicker subtitle — sits below caption in the safe zone */}
       {scene.kicker ? (
         <div
           style={{
             position: "absolute",
-            bottom: 170,
+            bottom: kickerBottom,
             left: 0,
             right: 0,
             textAlign: "center",
             transform: `translateY(${kickerSlide}px)`,
             opacity: kickerOpacity,
+            padding: `0 ${Math.round(width * 0.08)}px`,
           }}
         >
           <span
             style={{
-              fontSize: 28,
+              fontSize: Math.round(height * 0.018),
               fontWeight: 600,
               color: scene.accent,
-              letterSpacing: 6,
+              letterSpacing: 4,
               textTransform: "uppercase",
               fontFamily: "var(--font-dm-mono), 'Courier New', monospace",
-              textShadow: "0 2px 8px rgba(0,0,0,0.8)",
+              textShadow: "0 2px 8px rgba(0,0,0,0.9)",
             }}
           >
             ◆ {scene.kicker} ◆
