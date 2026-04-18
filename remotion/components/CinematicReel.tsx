@@ -19,7 +19,6 @@ import { slide } from "@remotion/transitions/slide";
 import { fade } from "@remotion/transitions/fade";
 import { wipe } from "@remotion/transitions/wipe";
 import { flip } from "@remotion/transitions/flip";
-import { noise2D } from "@remotion/noise";
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 // This is the JSON schema Gemma produces. Keep it intentionally small:
@@ -155,41 +154,30 @@ function resolveScenes(scenes: ReelScene[]): ResolvedScene[] {
 
 // ─── Subcomponents ───────────────────────────────────────────────────────────
 
-// Grain cell size in pixels — larger = coarser grain, smaller = finer.
-const GRAIN_STEP = 4;
-
 const FilmGrain: React.FC = () => {
   const frame = useCurrentFrame();
-  const { width, height } = useVideoConfig();
-
-  const cols = Math.ceil(width / GRAIN_STEP);
-  const rows = Math.ceil(height / GRAIN_STEP);
-
-  // Deterministic per-frame Perlin grain — no SVG filter ID churn, no DOM thrash.
-  const rects: React.ReactNode[] = [];
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      const n = (noise2D("grain", col + frame * 0.7, row + frame * 0.5) + 1) / 2;
-      if (n < 0.42) continue;
-      const opacity = (n - 0.42) * 0.55;
-      rects.push(
-        <rect
-          key={`${row}-${col}`}
-          x={col * GRAIN_STEP}
-          y={row * GRAIN_STEP}
-          width={GRAIN_STEP}
-          height={GRAIN_STEP}
-          fill="#fff"
-          opacity={opacity}
-        />
-      );
-    }
-  }
-
+  const seed = Math.floor(frame / 2);
+  // Fixed filter ID avoids accumulating new SVG filter elements per frame —
+  // React updates the seed attribute on the single existing filter node.
   return (
-    <AbsoluteFill style={{ mixBlendMode: "overlay", pointerEvents: "none" }}>
-      <svg width={width} height={height} xmlns="http://www.w3.org/2000/svg" style={{ display: "block" }}>
-        {rects}
+    <AbsoluteFill
+      style={{
+        opacity: 0.15,
+        mixBlendMode: "overlay",
+        pointerEvents: "none",
+      }}
+    >
+      <svg
+        width="100%"
+        height="100%"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ display: "block" }}
+      >
+        <filter id="grain-filter">
+          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed={seed} />
+          <feColorMatrix type="saturate" values="0" />
+        </filter>
+        <rect width="100%" height="100%" filter="url(#grain-filter)" opacity="1" />
       </svg>
     </AbsoluteFill>
   );
