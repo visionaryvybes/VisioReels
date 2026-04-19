@@ -382,7 +382,7 @@ function buildDirectorPrompt(
 ): string {
   const visionBlock =
     visionNotes.length > 0
-      ? `\nATTACHED IMAGES — use these for per-scene layout decisions:\n${visionNotes
+      ? `\nImages:\n${visionNotes
           .filter((n) => n.subject)
           .map((n, i) => {
             const spatial = n.composition ? ` | composition: ${n.composition}` : "";
@@ -394,78 +394,40 @@ function buildDirectorPrompt(
           .join("\n")}`
       : "";
 
-  const layoutMenu = `hud | editorial | typographic | split | orbital | data-grid | full-bleed | glitch | magazine`;
-  const primMenu = `HUDCorners | StarField | GridOverlay | KineticTitle | TelemetryCounter | StatusBar | DataReadout | ScanLines | LightLeak`;
-  const transMenu = `fade | slide-left | slide-right | slide-top | slide-bottom | flip | wipe | iris | clock-wipe`;
+  return `You are a creative director. Plan a ${targetSec}s video in ${aspect}.
+Brief: "${userBrief || "(derive concept from images below)"}"
+Feel: ${creative.motionFeel} motion · ${creative.captionTone} copy · ${creative.transitionEnergy} energy · up to ${maxScenes} scenes${visionBlock}
+${webContext ? webContext : ""}
 
-  return `You are the creative director AND art director for a ${targetSec}s video in ${aspect} format.
-Your job: produce a COMPLETE pre-production brief that tells the motion designer (Gemma) EXACTLY what to build — scene by scene. Gemma does NOT make creative decisions. You do. Be specific. Be opinionated.
-
-BRIEF: "${userBrief || "(images only — derive concept from visuals)"}"
-MOTION FEEL: ${creative.motionFeel} | COPY TONE: ${creative.captionTone} | ENERGY: ${creative.transitionEnergy}
-SCENES: up to ${maxScenes}${visionBlock}
-
-${PRIMITIVES_CATALOG}
-
-Respond with ONE JSON object ONLY — no explanation, no markdown fence:
-
+Return ONE JSON only — no prose, no markdown:
 {
-  "title": "short punchy video title (≤30 chars)",
-  "logline": "one sentence: what story does this video tell?",
-  "hook": "describe the EXACT first 2 seconds — what's on screen and what does the first line of copy say?",
-  "palette": {
-    "bg": "#hex — primary background",
-    "text": "#hex — primary text color",
-    "accent": "#hex — signature accent (for HUD elements, underlines, highlights)",
-    "secondary": "#hex — secondary accent"
-  },
-  "typography": {
-    "headline_font": "exact Google Font name e.g. Space Grotesk",
-    "mono_font": "exact monospace Google Font e.g. JetBrains Mono",
-    "style_note": "e.g. bold display + light mono contrast"
-  },
-  "motion_language": "concise motion description e.g. weighted expo.out deceleration, no bounce, precise",
-  "overall_energy": "low | medium | high",
-  "scenes": [
-    {
-      "index": 0,
-      "layout": "${layoutMenu}",
-      "bg": "hex or CSS gradient string",
-      "headline": "EXACT headline text shown on screen (make it powerful, specific, not generic)",
-      "kicker": "EXACT mono kicker label e.g. 'PHASE 01 · LAUNCH' or '00:23:56 · T+MISSION'",
-      "body": "optional supporting copy (1 short sentence max)",
-      "accent": "#hex for this scene",
-      "secondary": "#hex optional",
-      "data_points": [{"label":"ALTITUDE","value":"183","unit":"km"}],
-      "primitives": ["${primMenu}"],
-      "transition": "${transMenu}",
-      "motion_note": "e.g. 'stagger 4fr per word, slide-up; HUDCorners reveal at frame 0; counter runs 0→183 over 45fr'"
-    }
-  ]
+  "title": "PascalCase ≤24 chars",
+  "logline": "one sentence story",
+  "hook": "exact first 2 seconds on screen",
+  "palette": {"bg":"#hex","text":"#hex","accent":"#hex","secondary":"#hex"},
+  "typography": {"headline_font":"Google Font","mono_font":"mono Google Font","style_note":"brief"},
+  "motion_language": "e.g. weighted expo.out, no bounce",
+  "overall_energy": "low|medium|high",
+  "scenes": [{
+    "index": 0,
+    "layout": "hud|editorial|typographic|split|orbital|data-grid|full-bleed|glitch|magazine",
+    "bg": "#hex or CSS gradient",
+    "headline": "SPECIFIC headline for this scene — not generic",
+    "kicker": "mono label e.g. 'PHASE 01 · LAUNCH'",
+    "body": "optional 1 sentence",
+    "accent": "#hex",
+    "primitives": ["HUDCorners","StarField","GridOverlay","KineticTitle","TelemetryCounter","StatusBar","DataReadout","ScanLines","LightLeak"],
+    "transition": "fade|slide-left|slide-right|slide-top|slide-bottom|flip|wipe|iris|clock-wipe",
+    "motion_note": "exact animation e.g. 'stagger 4fr/word, HUDCorners at frame 0'"
+  }]
 }
 
-RULES:
-- scenes.length must be between 2 and ${maxScenes}
-- Every headline must be SPECIFIC to the brief — never generic ("Explore Now", "Amazing Journey")
-- Pick primitives that match the layout: hud → HUDCorners + DataReadout; typographic → KineticTitle; data-grid → GridOverlay + TelemetryCounter
-- Vary layouts scene to scene — don't repeat the same layout twice in a row
-- For scenes with attached images: choose layout + text_zone based on the composition field — if text_zone=bottom-left, anchor headline bottom-left, leave subject visible; if text_zone=right-panel, use split layout with text on right
-- For interior/architecture/product images: copy_style guides the headline tone — "luxury" → aspirational editorial; "tech" → data/spec-driven; "fashion" → attitude statement
-- Headlines should reference what's IN the image (the specific room, product, person, scene) not generic copy
-- For ${creative.captionTone} tone: ${
-    creative.captionTone === "hype" ? "ALL-CAPS power words, 1-3 word punches, kinetic energy"
-    : creative.captionTone === "corporate" ? "Title Case benefit lines, confident, data-backed"
-    : creative.captionTone === "storytelling" ? "evocative fragments, cinematic, emotional resonance"
-    : creative.captionTone === "tutorial" ? "step labels, numbered, instructional clarity"
-    : "scroll-stopping hooks, native social phrasing"
-  }
-- For ${creative.motionFeel} motion: ${
-    creative.motionFeel === "dramatic" ? "no bounce, expo.out long ramp, stillness before action"
-    : creative.motionFeel === "snappy" ? "short stiff springs, decisive, controlled"
-    : creative.motionFeel === "dreamy" ? "sine ease, symmetrical, floaty timing"
-    : creative.motionFeel === "bouncy" ? "overshoot spring, playful, energetic"
-    : "smooth deceleration, luxury pacing"
-  }${webContext ? `\n\n${webContext}` : ""}`;
+Rules: scenes 2–${maxScenes}. Headlines SPECIFIC to brief/images — never "Explore Now" or "Amazing Journey". Vary layouts. Match palette to mood. For ${creative.captionTone}: ${
+    creative.captionTone === "hype" ? "ALL-CAPS 1-4 word punches" :
+    creative.captionTone === "corporate" ? "Title Case benefit lines" :
+    creative.captionTone === "storytelling" ? "evocative cinematic fragments" :
+    creative.captionTone === "tutorial" ? "step labels, numbered" : "scroll-stopping social hooks"
+  }. Banned: "revolutionary", "game-changing", "unlock", "elevate", "let's dive in".`;
 }
 
 async function runBrainPass(
@@ -661,6 +623,7 @@ interface ReelScene {
   kicker?: string;
   accent?: string;
   transition?: Transition;
+  narration?: string;
 }
 
 interface ReelSpec {
@@ -707,6 +670,13 @@ function buildReelPrompt(
   const aspectMeta = ASPECTS[aspect];
   const paceMeta = PACE[pace];
   const creativeBlock = buildHyperframesCreativeBlock(creative);
+  const criticalRules = `CRITICAL RULES (read before schema):
+- Every scene.src MUST be copied letter-for-letter from the image list below — no paraphrasing
+- scenes.length: 2 to ${maxScenes}
+- caption ≤${captionMax} chars · kicker ≤${kickerMax} chars
+- Vary transitions scene-to-scene — no two in a row the same
+- Caption must reference what's IN that image (from subject/mood below) — never generic
+`;
   const remixBlock = buildReelRemixDirective(attachments.length, maxScenes);
   const longForm = targetDurationSec >= 45;
   const lingoBlock = `═══ TARGET RUNTIME: ${targetDurationSec} seconds (~${targetDurationSec * 30} frames @ 30fps) ═══
@@ -732,6 +702,7 @@ STRICT RULE: The caption and kicker above are APPROVED copy — paste them verba
 Pace: ${pace.toUpperCase()} — ${paceMeta.blurb}.
 
 ${creativeBlock}
+${criticalRules}
 ${remixBlock}
 ${lingoBlock}
 ${directorBlock}═══ OUTPUT CONTRACT ═══
@@ -749,7 +720,8 @@ The JSON must parse with JSON.parse().
       "caption":    string   (REQUIRED, headline text — max ${captionMax} chars; hype/social: often 1–3 ALL-CAPS words OR a short punchy phrase; corporate: Title Case benefit line),
       "kicker":     string   (optional, supporting line — max ${kickerMax} chars; lowercase or sentence case per tone; for ${targetDurationSec}s+ make it a satisfying beat, not filler),
       "accent":     string   (optional, hex color matching the image mood, e.g. "#ff3d3d"),
-      "transition": ${transitionList}   (optional)
+      "transition": ${transitionList}   (optional),
+      "narration":  string   (optional — natural spoken version of this scene for TTS, 1-2 sentences, no hashtags)
     }
   ]
 }
@@ -1006,6 +978,7 @@ CSS @keyframes in a <style> tag are fully supported — use them for: fade-in, s
    - Dominant headline: 100-180px, tight tracking (-0.03em to -0.05em), bold weight
    - Kicker/label: 13-18px, 0.2em letter-spacing, uppercase, 55% opacity, mono font
    - Supporting copy: 22-28px, readable weight, 1.4-1.6 line-height
+   - Each slide's headline should also work as a spoken sentence (no abbreviations, no ALL-CAPS acronyms that don't read naturally)
 
 ═══ LAYOUT PATTERNS (pick one per slide, vary across the deck) ═══
 - EDITORIAL: large headline top-left, thin rule below, small kicker left-aligned, whitespace dominant
@@ -1075,6 +1048,8 @@ function validateReelSpec(
     const kicker =
       typeof sc.kicker === "string" && sc.kicker.trim() ? sc.kicker.trim().slice(0, kickerMax) : undefined;
 
+    const narration = typeof sc.narration === "string" && sc.narration.trim() ? sc.narration.trim().slice(0, 200) : undefined;
+
     let accent: string | undefined;
     if (typeof sc.accent === "string") {
       const a = sc.accent.trim();
@@ -1093,6 +1068,7 @@ function validateReelSpec(
       kicker,
       accent,
       transition,
+      narration,
     });
   }
 
@@ -1402,7 +1378,7 @@ function registerInRoot(
 }
 
 async function generateSceneTTS(
-  scenes: Array<{ caption: string; kicker?: string }>,
+  scenes: Array<{ caption: string; kicker?: string; narration?: string }>,
   componentName: string,
   profileId: string,
   onProgress: (msg: string) => void,
@@ -1414,8 +1390,9 @@ async function generateSceneTTS(
   const paths: string[] = [];
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i];
-    // Combine caption + kicker for narration
-    const text = [scene.caption, scene.kicker].filter(Boolean).join(". ").trim();
+    // Prefer dedicated narration text, fall back to caption + kicker
+    const text = (scene as { caption: string; kicker?: string; narration?: string }).narration
+      || [scene.caption, scene.kicker].filter(Boolean).join(". ").trim();
     if (!text) { paths.push(""); continue; }
 
     const filename = `${componentName}-scene-${i}.wav`;

@@ -26,6 +26,7 @@ import { NIGHTDRIVEGLITCH } from "./compositions/NIGHTDRIVEGLITCH";
 import { THEPLASTICMANIFESTO } from "./compositions/THEPLASTICMANIFESTO";
 import { TheBlueprintDesigning } from "./compositions/TheBlueprintDesigning";
 import { PlasticDecay } from "./compositions/PlasticDecay";
+import { SystemOverload } from "./compositions/SystemOverload";
 import { Reel, DEFAULT_SCENES } from "./compositions/Reel";
 import {
   computeReelDuration,
@@ -121,6 +122,7 @@ export const RemotionRoot: React.FC = () => {
       <Composition id="THEPLASTICMANIFESTO" component={THEPLASTICMANIFESTO} durationInFrames={1358} fps={30} width={1080} height={1920} defaultProps={{}} />
       <Composition id="TheBlueprintDesigning" component={TheBlueprintDesigning} durationInFrames={1348} fps={30} width={1920} height={1080} defaultProps={{}} />
       <Composition id="PlasticDecay" component={PlasticDecay} durationInFrames={1344} fps={30} width={1080} height={1920} defaultProps={{}} />
+      <Composition id="SystemOverload" component={SystemOverload} durationInFrames={1354} fps={30} width={1080} height={1920} defaultProps={{}} />
     </>
   );
 };
