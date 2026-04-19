@@ -1,5 +1,15 @@
 import type { Metadata } from "next";
-import { Syne, DM_Sans, DM_Mono } from "next/font/google";
+import {
+  Syne,
+  DM_Sans,
+  DM_Mono,
+  Playfair_Display,
+  Space_Grotesk,
+  Fraunces,
+  Archivo_Black,
+  Instrument_Serif,
+  Bricolage_Grotesque,
+} from "next/font/google";
 import "./globals.css";
 
 // frontend-design skill: distinctive fonts, never generic Inter/Roboto
@@ -24,6 +34,54 @@ const dmMono = DM_Mono({
   subsets: ["latin"],
   weight: ["300", "400", "500"],
   variable: "--font-dm-mono",
+  display: "swap",
+});
+
+// Editorial serif — slide typography preset "EDITORIAL"
+const playfair = Playfair_Display({
+  subsets: ["latin"],
+  weight: ["400", "700", "900"],
+  variable: "--font-playfair",
+  display: "swap",
+});
+
+// Swiss geometric — slide preset "SWISS"
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "700"],
+  variable: "--font-space-grotesk",
+  display: "swap",
+});
+
+// Warm contemporary serif — slide preset "MANIFESTO"
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  weight: ["400", "700", "900"],
+  variable: "--font-fraunces",
+  display: "swap",
+});
+
+// Heavy sans — slide preset "BRUTAL"
+const archivoBlack = Archivo_Black({
+  subsets: ["latin"],
+  weight: ["400"],
+  variable: "--font-archivo-black",
+  display: "swap",
+});
+
+// Elegant single-weight serif — slide preset "QUIET"
+const instrumentSerif = Instrument_Serif({
+  subsets: ["latin"],
+  weight: ["400"],
+  variable: "--font-instrument-serif",
+  display: "swap",
+});
+
+// Variable contemporary — slide preset "ZINE"
+const bricolage = Bricolage_Grotesque({
+  subsets: ["latin"],
+  weight: ["300", "500", "700", "800"],
+  variable: "--font-bricolage",
   display: "swap",
 });
 
@@ -55,7 +113,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${syne.variable} ${dmSans.variable} ${dmMono.variable} dark`}
+      className={`${syne.variable} ${dmSans.variable} ${dmMono.variable} ${playfair.variable} ${spaceGrotesk.variable} ${fraunces.variable} ${archivoBlack.variable} ${instrumentSerif.variable} ${bricolage.variable} dark`}
       suppressHydrationWarning
     >
       <body

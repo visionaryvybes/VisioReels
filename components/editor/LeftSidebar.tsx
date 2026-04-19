@@ -1,127 +1,80 @@
 'use client';
 
-import { Sparkles, Image, Clock, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEditorStore, ActivePanel } from '@/stores/editor-store';
 import { AIPanel } from './panels/AIPanel';
 import { MediaPanel } from './panels/MediaPanel';
 import { HistoryPanel } from './panels/HistoryPanel';
-import { ExportPanel } from './panels/ExportPanel';
 
-const TABS: { id: ActivePanel; icon: React.ReactNode; label: string }[] = [
-  { id: 'ai',      icon: <Sparkles size={16} />,  label: 'AI' },
-  { id: 'media',   icon: <Image size={16} />,      label: 'Media' },
-  { id: 'history', icon: <Clock size={16} />,      label: 'History' },
-  { id: 'export',  icon: <Download size={16} />,   label: 'Export' },
+const TABS: { id: ActivePanel; label: string }[] = [
+  { id: 'ai',      label: 'AI GENERATOR' },
+  { id: 'media',   label: 'MEDIA LIBRARY' },
+  { id: 'history', label: 'HISTORY' },
 ];
 
 export function LeftSidebar() {
-  const { activePanel, setActivePanel } = useEditorStore();
-
-  const PanelContent = () => {
-    switch (activePanel) {
-      case 'ai':      return <AIPanel />;
-      case 'media':   return <MediaPanel />;
-      case 'history': return <HistoryPanel />;
-      case 'export':  return <ExportPanel />;
-    }
-  };
+  const activePanel = useEditorStore((s) => s.activePanel);
+  const setActivePanel = useEditorStore((s) => s.setActivePanel);
 
   return (
     <div
       style={{
         display: 'flex',
-        flexShrink: 0,
+        flexDirection: 'column',
+        flex: 1,
+        width: '100%',
+        minWidth: 0,
         height: '100%',
-        borderRight: '1px solid rgba(255,255,255,0.07)',
+        borderRight: '1px solid #333',
+        background: '#000',
       }}
     >
-      {/* Icon strip */}
-      <div
-        style={{
-          width: 48,
-          background: '#0a0a0a',
-          borderRight: '1px solid rgba(255,255,255,0.06)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          paddingTop: 8,
-          gap: 2,
-          flexShrink: 0,
-        }}
-      >
-        {TABS.map((tab) => {
-          const active = activePanel === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActivePanel(tab.id)}
-              title={tab.label}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 8,
-                border: 'none',
-                background: active ? 'rgba(124,58,237,0.18)' : 'transparent',
-                color: active ? '#a78bfa' : 'rgba(255,255,255,0.35)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 3,
-                cursor: 'pointer',
-                transition: 'all 0.15s cubic-bezier(0.16,1,0.3,1)',
-                position: 'relative',
-              }}
-              onMouseEnter={(e) => {
-                if (!active) {
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
-                  e.currentTarget.style.color = 'rgba(255,255,255,0.7)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!active) {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.color = 'rgba(255,255,255,0.35)';
-                }
-              }}
-            >
-              {active && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    width: 2,
-                    height: 20,
-                    background: '#7c3aed',
-                    borderRadius: '0 2px 2px 0',
-                  }}
-                />
-              )}
-              {tab.icon}
-              <span
+      {/* Horizontal Navigation */}
+      <div style={{ padding: '12px 16px', background: '#050505', borderBottom: '1px solid #1a1a1a' }}>
+        <div style={{ display: 'flex', background: '#111', borderRadius: 8, padding: 4, border: '1px solid #222' }}>
+          {TABS.map((tab) => {
+            const active = activePanel === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActivePanel(tab.id)}
                 style={{
-                  fontSize: 8,
-                  fontFamily: 'var(--font-syne), system-ui, sans-serif',
-                  fontWeight: 600,
-                  letterSpacing: '0.04em',
-                  textTransform: 'uppercase',
+                  flex: 1,
+                  height: 32,
+                  border: 'none',
+                  borderRadius: 6,
+                  background: active ? '#ccff00' : 'transparent',
+                  color: active ? '#000' : '#888',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-dm-mono), monospace',
+                  fontSize: 10,
+                  letterSpacing: '0.05em',
+                  fontWeight: active ? 700 : 500,
+                  transition: 'all 0.15s ease',
+                  outline: 'none',
+                }}
+                onMouseEnter={(e) => {
+                  if (!active) { e.currentTarget.style.color = '#ccc'; }
+                }}
+                onMouseLeave={(e) => {
+                  if (!active) { e.currentTarget.style.color = '#888'; }
                 }}
               >
                 {tab.label}
-              </span>
-            </button>
-          );
-        })}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Panel content */}
       <div
         style={{
-          width: 192,
-          background: '#0f0f0f',
+          flex: 1,
+          background: '#050505',
           overflow: 'hidden',
           position: 'relative',
         }}
@@ -129,13 +82,15 @@ export function LeftSidebar() {
         <AnimatePresence mode="wait">
           <motion.div
             key={activePanel}
-            initial={{ opacity: 0, x: -8 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -8 }}
-            transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.1 }}
             style={{ height: '100%' }}
           >
-            <PanelContent />
+            {activePanel === 'ai' && <AIPanel />}
+            {activePanel === 'media' && <MediaPanel />}
+            {activePanel === 'history' && <HistoryPanel />}
           </motion.div>
         </AnimatePresence>
       </div>

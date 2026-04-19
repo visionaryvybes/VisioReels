@@ -1,15 +1,11 @@
 'use client';
 
 import { useRef } from 'react';
-import { Play, Pause } from 'lucide-react';
 import { useTimelineStore } from '@/stores/timeline-store';
 
 export function Timeline() {
-  const { clips, currentFrame, isPlaying, setCurrentFrame, setPlaying, setSelected, selectedClipId } =
-    useTimelineStore();
-
+  const { clips, currentFrame, setCurrentFrame, setSelected, selectedClipId } = useTimelineStore();
   const trackRef = useRef<HTMLDivElement>(null);
-
   const totalFrames = clips.reduce((max, c) => Math.max(max, c.durationInFrames), 1);
 
   const handleTrackClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -24,158 +20,66 @@ export function Timeline() {
 
   return (
     <div
+      className="timeline-root"
       style={{
-        height: 120,
         flexShrink: 0,
-        background: '#0d0d0d',
-        borderTop: '1px solid rgba(255,255,255,0.07)',
+        background: '#000',
+        borderTop: '1px solid #333',
         display: 'flex',
         overflow: 'hidden',
       }}
     >
-      {/* Track label area */}
+      {/* Track Label — hidden on mobile via .timeline-label */}
       <div
+        className="timeline-label"
         style={{
-          width: 64,
+          width: 320,
           flexShrink: 0,
-          background: '#0a0a0a',
-          borderRight: '1px solid rgba(255,255,255,0.07)',
-          display: 'flex',
+          background: '#050505',
+          borderRight: '1px solid #333',
           flexDirection: 'column',
+          justifyContent: 'space-between',
         }}
       >
-        {/* Play/pause button in header */}
-        <div
-          style={{
-            height: 32,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderBottom: '1px solid rgba(255,255,255,0.05)',
-          }}
-        >
-          <button
-            onClick={() => setPlaying(!isPlaying)}
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 6,
-              border: 'none',
-              background: isPlaying ? 'rgba(124,58,237,0.2)' : 'rgba(255,255,255,0.05)',
-              color: isPlaying ? '#a78bfa' : 'rgba(255,255,255,0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: clips.length > 0 ? 'pointer' : 'not-allowed',
-              opacity: clips.length === 0 ? 0.4 : 1,
-              transition: 'all 0.15s cubic-bezier(0.16,1,0.3,1)',
-            }}
-          >
-            {isPlaying ? <Pause size={13} /> : <Play size={13} />}
-          </button>
-        </div>
-
-        {/* Track label */}
-        <div
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '0 6px',
-          }}
-        >
-          <span
-            style={{
-              fontSize: 9,
-              fontFamily: 'var(--font-syne), system-ui, sans-serif',
-              fontWeight: 700,
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              color: 'rgba(255,255,255,0.25)',
-              writingMode: 'vertical-rl',
-              transform: 'rotate(180deg)',
-            }}
-          >
-            VIDEO
-          </span>
+        <div style={{ flex: 1, padding: '24px 20px', display: 'flex', alignItems: 'flex-end', color: '#666', fontSize: 11, fontFamily: 'var(--font-dm-mono), monospace', letterSpacing: '0.05em' }}>
+          MAIN VIDEO TRACK
         </div>
       </div>
 
-      {/* Scrollable track area */}
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        {/* Time ruler */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', background: '#000' }}>
+        {/* Time Ruler */}
         <div
           style={{
-            height: 32,
-            borderBottom: '1px solid rgba(255,255,255,0.05)',
-            display: 'flex',
-            alignItems: 'flex-end',
-            padding: '0 0 4px',
-            position: 'relative',
-            background: '#0b0b0b',
+            height: 48, borderBottom: '1px solid #222', position: 'relative', background: '#050505',
           }}
         >
-          {clips.length > 0 &&
-            Array.from({ length: 11 }).map((_, i) => {
-              const frame = Math.round((i / 10) * totalFrames);
-              const fps = clips[0]?.fps ?? 30;
-              const sec = Math.round(frame / fps);
-              return (
-                <div
-                  key={i}
-                  style={{
-                    position: 'absolute',
-                    left: `${(i / 10) * 100}%`,
-                    transform: 'translateX(-50%)',
-                    fontSize: 9,
-                    fontFamily: 'var(--font-dm-mono), monospace',
-                    color: 'rgba(255,255,255,0.2)',
-                    userSelect: 'none',
-                  }}
-                >
-                  {sec}s
-                </div>
-              );
-            })}
+          {/* Tick marks */}
+          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(90deg, #333, #333 1px, transparent 1px, transparent 40px)', backgroundSize: '40px 100%' }} />
+
+          {clips.length > 0 && Array.from({ length: 11 }).map((_, i) => {
+            const frame = Math.round((i / 10) * totalFrames);
+            const fps = clips[0]?.fps ?? 30;
+            const sec = Math.round(frame / fps);
+            return (
+              <div key={i} style={{ position: 'absolute', left: `${i * 10}%`, bottom: 4, transform: 'translateX(-50%)', fontSize: 10, fontFamily: 'var(--font-dm-mono), monospace', color: '#888', userSelect: 'none', padding: '0 4px', background: '#050505' }}>
+                {sec}s
+              </div>
+            );
+          })}
         </div>
 
-        {/* Track row */}
-        <div
-          ref={trackRef}
-          onClick={handleTrackClick}
-          style={{
-            flex: 1,
-            background: 'rgba(255,255,255,0.025)',
-            position: 'relative',
-            cursor: clips.length > 0 ? 'crosshair' : 'default',
-            overflow: 'hidden',
-          }}
-        >
+        {/* Track Area */}
+        <div ref={trackRef} onClick={handleTrackClick} style={{ flex: 1, position: 'relative', cursor: 'crosshair' }}>
+          {/* Background grid lines */}
+          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(90deg, #111, #111 1px, transparent 1px, transparent 40px)', backgroundSize: '40px 100%' }} />
+
           {clips.length === 0 ? (
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 11,
-                  fontFamily: 'var(--font-dm-sans), system-ui, sans-serif',
-                  color: 'rgba(255,255,255,0.15)',
-                }}
-              >
-                Generate a reel to populate the timeline
-              </span>
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#333', fontSize: 11, fontFamily: 'var(--font-dm-mono), monospace', letterSpacing: '0.1em' }}>
+              [ TIMELINE IS EMPTY ]
             </div>
           ) : (
             clips.map((clip) => {
               const widthPct = totalFrames > 0 ? (clip.durationInFrames / totalFrames) * 100 : 100;
-              const durationSec = Math.round(clip.durationInFrames / clip.fps);
               const isSelected = selectedClipId === clip.id;
 
               return (
@@ -183,50 +87,16 @@ export function Timeline() {
                   key={clip.id}
                   onClick={(e) => { e.stopPropagation(); setSelected(clip.id); }}
                   style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 6,
-                    bottom: 6,
-                    width: `${widthPct}%`,
-                    background: clip.color,
-                    borderRadius: 6,
-                    border: isSelected
-                      ? '1.5px solid rgba(255,255,255,0.5)'
-                      : '1px solid rgba(255,255,255,0.15)',
-                    opacity: 0.85,
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '0 10px',
-                    gap: 8,
-                    cursor: 'pointer',
-                    boxSizing: 'border-box',
-                    transition: 'opacity 0.15s',
+                    position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', height: 80, width: `${widthPct}%`,
+                    background: isSelected ? '#333' : '#111',
+                    border: `1px solid ${isSelected ? '#ccff00' : '#444'}`,
+                    display: 'flex', alignItems: 'center', padding: '0 16px',
+                    cursor: 'pointer', boxSizing: 'border-box', overflow: 'hidden',
+                    transition: 'none'
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.85'; }}
                 >
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontFamily: 'var(--font-syne), system-ui, sans-serif',
-                      fontWeight: 600,
-                      color: 'white',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
+                  <span style={{ fontSize: 11, fontFamily: 'var(--font-dm-mono), monospace', fontWeight: 700, color: isSelected ? '#ccff00' : '#888', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                     {clip.label}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 9,
-                      fontFamily: 'var(--font-dm-mono), monospace',
-                      color: 'rgba(255,255,255,0.6)',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {durationSec}s
                   </span>
                 </div>
               );
@@ -235,83 +105,11 @@ export function Timeline() {
 
           {/* Playhead */}
           {clips.length > 0 && (
-            <div
-              style={{
-                position: 'absolute',
-                top: 0,
-                bottom: 0,
-                left: `${playheadPct}%`,
-                width: 1.5,
-                background: '#a78bfa',
-                pointerEvents: 'none',
-                boxShadow: '0 0 6px rgba(167,139,250,0.6)',
-              }}
-            >
-              {/* Playhead head */}
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  width: 10,
-                  height: 10,
-                  background: '#a78bfa',
-                  borderRadius: '0 0 2px 2px',
-                  clipPath: 'polygon(0 0, 100% 0, 50% 100%)',
-                }}
-              />
+            <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${playheadPct}%`, width: 1, background: '#ff3300', pointerEvents: 'none', zIndex: 10 }}>
+              <div style={{ position: 'absolute', top: -12, left: -6, width: 13, height: 12, background: '#ff3300', clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
             </div>
           )}
         </div>
-      </div>
-
-      {/* Current frame readout */}
-      <div
-        style={{
-          width: 80,
-          flexShrink: 0,
-          background: '#0a0a0a',
-          borderLeft: '1px solid rgba(255,255,255,0.07)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 4,
-        }}
-      >
-        <span
-          style={{
-            fontSize: 16,
-            fontFamily: 'var(--font-dm-mono), monospace',
-            fontWeight: 500,
-            color: clips.length > 0 ? '#a78bfa' : 'rgba(255,255,255,0.2)',
-          }}
-        >
-          {currentFrame}
-        </span>
-        <span
-          style={{
-            fontSize: 9,
-            fontFamily: 'var(--font-dm-mono), monospace',
-            color: 'rgba(255,255,255,0.2)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.08em',
-          }}
-        >
-          frame
-        </span>
-        {clips.length > 0 && (
-          <span
-            style={{
-              fontSize: 9,
-              fontFamily: 'var(--font-dm-mono), monospace',
-              color: 'rgba(255,255,255,0.2)',
-            }}
-          >
-            / {totalFrames}
-          </span>
-        )}
       </div>
     </div>
   );

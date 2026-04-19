@@ -48,3 +48,9 @@ next-env.d.ts
 
 # remotion render output
 /render-output/
+
+# user-uploaded images (runtime-only; content-hashed per upload)
+/public/uploads/*
+!/public/uploads/.gitkeep
+/public/html-renders/*
+!/public/html-renders/.gitkeep

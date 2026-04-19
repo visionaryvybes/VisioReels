@@ -9,9 +9,13 @@
     "lint": "eslint",
     "studio": "remotion studio remotion/index.ts",
     "still": "remotion still remotion/index.ts",
-    "render": "remotion render remotion/index.ts"
+    "render": "remotion render remotion/index.ts",
+    "playwright:install": "playwright install chromium"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@remotion/bundler": "^4.0.448",
     "@remotion/google-fonts": "^4.0.448",
     "@remotion/noise": "^4.0.448",
@@ -20,11 +24,15 @@
     "@remotion/transitions": "^4.0.448",
     "framer-motion": "^12.38.0",
     "immer": "^11.1.4",
+    "jszip": "^3.10.1",
     "lucide-react": "^1.8.0",
     "next": "16.2.3",
+    "pdf-lib": "^1.17.1",
+    "playwright": "^1.51.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "sharp": "^0.34.5",
+    "zundo": "^2.3.0",
     "zustand": "^5.0.12"
   },
   "devDependencies": {

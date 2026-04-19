@@ -19,6 +19,7 @@ interface ProjectStore {
   setComposition: (comp: string, prompt: string, preview: string) => void;
   saveToHistory: () => void;
   loadProject: (id: string) => void;
+  removeHistoryItem: (id: string) => void;
   newProject: () => void;
 }
 
@@ -70,6 +71,9 @@ export const useProjectStore = create<ProjectStore>()(
         const found = history.find((h) => h.id === id);
         if (found) set({ current: { ...found } });
       },
+
+      removeHistoryItem: (id) =>
+        set((s) => ({ history: s.history.filter((h) => h.id !== id) })),
 
       newProject: () => set({ current: makeProject() }),
     }),

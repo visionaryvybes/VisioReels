@@ -1,6 +1,7 @@
 import React from "react";
 import {
   AbsoluteFill,
+  Audio,
   Easing,
   Img,
   Sequence,
@@ -19,6 +20,8 @@ import { slide } from "@remotion/transitions/slide";
 import { fade } from "@remotion/transitions/fade";
 import { wipe } from "@remotion/transitions/wipe";
 import { flip } from "@remotion/transitions/flip";
+import { clockWipe } from "@remotion/transitions/clock-wipe";
+import { iris } from "@remotion/transitions/iris";
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 // This is the JSON schema Gemma produces. Keep it intentionally small:
@@ -31,7 +34,11 @@ export type TransitionKind =
   | "slide-bottom"
   | "flip"
   | "fade"
-  | "wipe";
+  | "wipe"
+  | "wipe-right"
+  | "wipe-bottom"
+  | "clock-wipe"
+  | "iris";
 
 export interface ReelScene {
   /**
@@ -48,13 +55,24 @@ export interface ReelScene {
   transition?: TransitionKind;
 }
 
+export type ReelDecorStyle = "none" | "minimal" | "film";
+
 export interface CinematicReelProps {
   scenes: ReelScene[];
   brandName?: string;
+  /** Headline font — CSS font-family stack (e.g. var(--font-syne)). */
+  captionFontFamily?: string;
+  /** Kicker / subtitle font. */
+  kickerFontFamily?: string;
+  /** Corner brackets, sparkles, or film perforations. */
+  decorStyle?: ReelDecorStyle;
   /** Frames per scene. Default 75 (2.5s @ 30fps). */
   sceneLengthInFrames?: number;
   /** Frames per transition. Default 18. */
   transitionLengthInFrames?: number;
+  /** Optional per-scene TTS audio paths (public-relative, e.g. "tts/scene-0.wav").
+   *  When provided, the audio file at index i plays once at the start of scene i. */
+  sceneTTSPaths?: string[];
 }
 
 // ─── Duration math (exported for calculateMetadata) ──────────────────────────
@@ -89,10 +107,16 @@ const ACCENT_PALETTE = [
 const TRANSITION_CYCLE: TransitionKind[] = [
   "slide-right",
   "flip",
-  "fade",
+  "iris",
   "wipe",
+  "clock-wipe",
   "slide-bottom",
+  "fade",
+  "wipe-right",
   "slide-left",
+  "iris",
+  "flip",
+  "slide-top",
 ];
 
 type Vec = readonly [number, number, number]; // [scale, tx%, ty%]
@@ -135,6 +159,29 @@ interface ResolvedScene {
   transition: TransitionKind;
   burnFrom: Vec;
   burnTo: Vec;
+}
+
+/** Keeps single-word headlines from clipping — scales down until the longest word fits. */
+function fitCaptionFontSize(
+  words: string[],
+  width: number,
+  height: number
+): number {
+  const maxCaptionWidth = Math.round(width * 0.88);
+  const baseFont = Math.round(height * 0.052);
+  const longest =
+    words.length === 0
+      ? "A"
+      : words.reduce((a, b) => (a.length >= b.length ? a : b), words[0]);
+  const len = Math.max(1, longest.length);
+  const maxLs = 10;
+  let fontSize = baseFont;
+  for (let step = 0; step < 120; step++) {
+    const estWordW = len * fontSize * 0.58 + Math.max(0, len - 1) * maxLs;
+    if (estWordW <= maxCaptionWidth * 0.9) break;
+    fontSize -= 1;
+  }
+  return Math.max(12, Math.min(baseFont, fontSize));
 }
 
 function resolveScenes(scenes: ReelScene[]): ResolvedScene[] {
@@ -183,6 +230,130 @@ const FilmGrain: React.FC = () => {
   );
 };
 
+/** Lime corner ticks + sparkle glyph — stays inside safe padding. */
+const SceneDecorMinimal: React.FC<{
+  accent: string;
+  width: number;
+  height: number;
+}> = ({ accent, width, height }) => {
+  const s = Math.round(Math.min(width, height) * 0.028);
+  const pad = Math.round(width * 0.04);
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none", zIndex: 6 }}>
+      <svg
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${width} ${height}`}
+        style={{ display: "block" }}
+      >
+        <path
+          d={`M ${pad + s} ${pad} L ${pad} ${pad} L ${pad} ${pad + s}`}
+          fill="none"
+          stroke={accent}
+          strokeWidth={2}
+          opacity={0.85}
+        />
+        <path
+          d={`M ${width - pad - s} ${pad} L ${width - pad} ${pad} L ${width - pad} ${pad + s}`}
+          fill="none"
+          stroke={accent}
+          strokeWidth={2}
+          opacity={0.85}
+        />
+        <path
+          d={`M ${pad} ${height - pad - s} L ${pad} ${height - pad} L ${pad + s} ${height - pad}`}
+          fill="none"
+          stroke={accent}
+          strokeWidth={2}
+          opacity={0.85}
+        />
+        <path
+          d={`M ${width - pad} ${height - pad - s} L ${width - pad} ${height - pad} L ${width - pad - s} ${height - pad}`}
+          fill="none"
+          stroke={accent}
+          strokeWidth={2}
+          opacity={0.85}
+        />
+        <text
+          x={width - pad - s * 2}
+          y={pad + s * 3}
+          fill={accent}
+          fontSize={s * 2.2}
+          fontFamily="var(--font-dm-mono), monospace"
+          opacity={0.9}
+        >
+          ✦
+        </text>
+      </svg>
+    </AbsoluteFill>
+  );
+};
+
+/** Simple film strip hint at top + bottom. */
+const SceneDecorFilm: React.FC<{ width: number; height: number }> = ({
+  width,
+  height,
+}) => {
+  const h = Math.round(height * 0.022);
+  const hole = Math.round(width * 0.012);
+  const n = Math.floor(width / (hole * 2.2));
+  const holes = Array.from({ length: n }, (_, i) => i);
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none", zIndex: 6 }}>
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: h,
+          background: "rgba(0,0,0,0.65)",
+          display: "flex",
+          justifyContent: "space-evenly",
+          alignItems: "center",
+        }}
+      >
+        {holes.map((i) => (
+          <div
+            key={`t-${i}`}
+            style={{
+              width: hole,
+              height: hole * 0.6,
+              borderRadius: 2,
+              background: "rgba(255,255,255,0.15)",
+            }}
+          />
+        ))}
+      </div>
+      <div
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: h,
+          background: "rgba(0,0,0,0.65)",
+          display: "flex",
+          justifyContent: "space-evenly",
+          alignItems: "center",
+        }}
+      >
+        {holes.map((i) => (
+          <div
+            key={`b-${i}`}
+            style={{
+              width: hole,
+              height: hole * 0.6,
+              borderRadius: 2,
+              background: "rgba(255,255,255,0.15)",
+            }}
+          />
+        ))}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 const useSpringAnim = (
   startFrame: number,
   from: number,
@@ -202,9 +373,18 @@ const useSpringAnim = (
   });
 };
 
-const SceneFrame: React.FC<{ scene: ResolvedScene; sceneLen: number }> = ({
+const SceneFrame: React.FC<{
+  scene: ResolvedScene;
+  sceneLen: number;
+  captionFontFamily: string;
+  kickerFontFamily: string;
+  decorStyle: ReelDecorStyle;
+}> = ({
   scene,
   sceneLen,
+  captionFontFamily,
+  kickerFontFamily,
+  decorStyle,
 }) => {
   const frame = useCurrentFrame();
 
@@ -219,19 +399,21 @@ const SceneFrame: React.FC<{ scene: ResolvedScene; sceneLen: number }> = ({
 
   const { width, height } = useVideoConfig();
 
-  const words = scene.caption.split(" ");
+  const rawWords = scene.caption.split(/\s+/).filter(Boolean);
+  const words = rawWords.length ? rawWords : [scene.caption];
   const kickerSlide = useSpringAnim(4, 40, 0, 18);
   const kickerOpacity = useSpringAnim(4, 0, 1, 18);
 
   // All sizes + positions scale with height so they work across 9:16, 1:1, 4:5, 16:9.
-  const fontSize = Math.round(height * 0.052);      // 100px @ 1920, 56px @ 1080
+  const fontSize = fitCaptionFontSize(words, width, height);
   const captionBottom = Math.round(height * 0.16);  // 307px @ 1920, 173px @ 1080
   const kickerBottom = Math.round(height * 0.07);   // 134px @ 1920, 76px @ 1080
   const barBottom = Math.round(height * 0.28);      // 538px @ 1920, 302px @ 1080
   const wordGap = Math.round(height * 0.008);       // 15px @ 1920, 9px @ 1080
   const maxCaptionWidth = Math.round(width * 0.88); // never overflow the frame
 
-  const letterSpacing = interpolate(frame, [0, sceneLen], [6, 10], {
+  const letterSpacingMax = Math.min(10, Math.max(4, Math.round(fontSize * 0.14)));
+  const letterSpacing = interpolate(frame, [0, sceneLen], [4, letterSpacingMax], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: Easing.out(Easing.cubic),
@@ -330,7 +512,10 @@ const SceneFrame: React.FC<{ scene: ResolvedScene; sceneLen: number }> = ({
           gap: wordGap,
           padding: `0 ${Math.round(width * 0.06)}px`,
           maxWidth: maxCaptionWidth,
+          width: "100%",
           margin: "0 auto",
+          boxSizing: "border-box",
+          overflow: "hidden",
         }}
       >
         {words.map((word, i) => {
@@ -364,9 +549,10 @@ const SceneFrame: React.FC<{ scene: ResolvedScene; sceneLen: number }> = ({
                 color: "#fff",
                 letterSpacing,
                 textTransform: "uppercase",
-                fontFamily:
-                  "var(--font-syne), 'Arial Black', system-ui, sans-serif",
+                fontFamily: captionFontFamily,
                 lineHeight: 1.05,
+                maxWidth: "100%",
+                wordBreak: "break-word",
                 textShadow: `0 4px 20px rgba(0,0,0,0.9), 0 0 2px ${scene.accent}`,
                 transform: `translateY(${wordY}px)`,
                 opacity: wordOp,
@@ -391,6 +577,9 @@ const SceneFrame: React.FC<{ scene: ResolvedScene; sceneLen: number }> = ({
             transform: `translateY(${kickerSlide}px)`,
             opacity: kickerOpacity,
             padding: `0 ${Math.round(width * 0.08)}px`,
+            maxWidth: Math.round(width * 0.92),
+            margin: "0 auto",
+            boxSizing: "border-box",
           }}
         >
           <span
@@ -400,13 +589,24 @@ const SceneFrame: React.FC<{ scene: ResolvedScene; sceneLen: number }> = ({
               color: scene.accent,
               letterSpacing: 4,
               textTransform: "uppercase",
-              fontFamily: "var(--font-dm-mono), 'Courier New', monospace",
+              fontFamily: kickerFontFamily,
               textShadow: "0 2px 8px rgba(0,0,0,0.9)",
+              display: "inline-block",
+              wordBreak: "break-word",
+              hyphens: "auto",
+              lineHeight: 1.35,
             }}
           >
             ◆ {scene.kicker} ◆
           </span>
         </div>
+      ) : null}
+
+      {decorStyle === "minimal" ? (
+        <SceneDecorMinimal accent={scene.accent} width={width} height={height} />
+      ) : null}
+      {decorStyle === "film" ? (
+        <SceneDecorFilm width={width} height={height} />
       ) : null}
 
       {/* Film grain + flash pop */}
@@ -564,7 +764,11 @@ const Chrome: React.FC<{
 // <TransitionSeries.Transition>, so we widen to a shared Record type.
 type AnyPresentation = TransitionPresentation<Record<string, unknown>>;
 
-function makeTransitionPresentation(kind: TransitionKind): AnyPresentation {
+function makeTransitionPresentation(
+  kind: TransitionKind,
+  w: number,
+  h: number
+): AnyPresentation {
   switch (kind) {
     case "slide-right":
       return slide({ direction: "from-right" }) as AnyPresentation;
@@ -578,6 +782,14 @@ function makeTransitionPresentation(kind: TransitionKind): AnyPresentation {
       return flip({ direction: "from-right" }) as AnyPresentation;
     case "wipe":
       return wipe({ direction: "from-top-left" }) as AnyPresentation;
+    case "wipe-right":
+      return wipe({ direction: "from-top-right" }) as AnyPresentation;
+    case "wipe-bottom":
+      return wipe({ direction: "from-bottom-left" }) as AnyPresentation;
+    case "clock-wipe":
+      return clockWipe({ width: w, height: h }) as unknown as AnyPresentation;
+    case "iris":
+      return iris({ width: w, height: h }) as unknown as AnyPresentation;
     case "fade":
     default:
       return fade() as AnyPresentation;
@@ -589,9 +801,16 @@ function makeTransitionPresentation(kind: TransitionKind): AnyPresentation {
 export const CinematicReel: React.FC<CinematicReelProps> = ({
   scenes,
   brandName = "VISIO●REEL",
+  captionFontFamily = "var(--font-syne), 'Arial Black', system-ui, sans-serif",
+  kickerFontFamily = "var(--font-dm-mono), 'Courier New', monospace",
+  decorStyle = "minimal",
   sceneLengthInFrames = 75,
   transitionLengthInFrames = 18,
+  sceneTTSPaths,
 }) => {
+  // All hooks must be called unconditionally before any early return.
+  const { width: vw, height: vh } = useVideoConfig();
+
   if (!scenes || scenes.length === 0) {
     return (
       <AbsoluteFill
@@ -635,7 +854,7 @@ export const CinematicReel: React.FC<CinematicReelProps> = ({
             entries.push(
               <TransitionSeries.Transition
                 key={`t-${i}`}
-                presentation={makeTransitionPresentation(kind)}
+                presentation={makeTransitionPresentation(kind, vw, vh)}
                 timing={timing}
               />
             );
@@ -646,7 +865,20 @@ export const CinematicReel: React.FC<CinematicReelProps> = ({
               key={`s-${i}`}
               durationInFrames={duration}
             >
-              <SceneFrame scene={scene} sceneLen={sceneLen} />
+              <SceneFrame
+                scene={scene}
+                sceneLen={sceneLen}
+                captionFontFamily={captionFontFamily}
+                kickerFontFamily={kickerFontFamily}
+                decorStyle={decorStyle}
+              />
+              {sceneTTSPaths?.[i] ? (
+                <Audio
+                  src={staticFile(sceneTTSPaths[i]!.replace(/^\.?\//, ""))}
+                  volume={0.85}
+                  endAt={sceneLen - 2}
+                />
+              ) : null}
             </TransitionSeries.Sequence>
           );
 

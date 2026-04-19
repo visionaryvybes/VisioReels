@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Save, FilePlus, Keyboard } from 'lucide-react';
+import Link from 'next/link';
 import { useProjectStore } from '@/stores/project-store';
 import { useEditorStore } from '@/stores/editor-store';
+import { useTimelineStore } from '@/stores/timeline-store';
 
 export function Topbar() {
   const { current, setName, saveToHistory, newProject } = useProjectStore();
   const reset = useEditorStore((s) => s.reset);
+  const clearAttachments = useEditorStore((s) => s.clearAttachments);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(current.name);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -45,10 +47,20 @@ export function Topbar() {
   const handleNew = () => {
     saveToHistory();
     newProject();
+    useTimelineStore.getState().clear();
+    clearAttachments();
+    useEditorStore.setState({
+      activeComposition: null,
+      compositionConfig: null,
+      compositionInputProps: null,
+      directorBrief: null,
+      visionNotes: [],
+      prompt: '',
+      previewFrame: 0,
+    });
     reset();
   };
 
-  // Global ⌘S shortcut
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
@@ -63,68 +75,60 @@ export function Topbar() {
 
   return (
     <header
+      className="editor-topbar"
       style={{
-        height: 48,
-        background: '#0a0a0a',
-        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        background: '#000',
+        borderBottom: '1px solid #1a1a1a',
         display: 'flex',
         alignItems: 'center',
-        padding: '0 12px',
         flexShrink: 0,
-        gap: 12,
       }}
     >
-      {/* Logo */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        <div
-          style={{
-            width: 24,
-            height: 24,
-            background: 'linear-gradient(135deg, #7c3aed, #a78bfa)',
-            borderRadius: 6,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <polygon points="3,2 11,7 3,12" fill="white" />
-          </svg>
+      {/* LEFT: Branding + Workspace switcher */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 14, height: 14, background: '#ccff00' }} />
+          <span style={{ fontFamily: 'var(--font-dm-mono), monospace', fontWeight: 700, fontSize: 14, color: '#fff', letterSpacing: '0.06em' }}>
+            VISIO REELS
+          </span>
+          <span className="editor-topbar-hide-mobile" style={{ fontFamily: 'var(--font-dm-mono), monospace', fontSize: 10, color: '#666', marginLeft: 4 }}>| LOCAL PROJECT</span>
         </div>
-        <span
-          style={{
-            fontFamily: 'var(--font-syne), system-ui, sans-serif',
-            fontWeight: 700,
-            fontSize: 14,
-            background: 'linear-gradient(90deg, #a78bfa, #7c3aed)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-            letterSpacing: '-0.02em',
-          }}
-        >
-          VisioReels
-        </span>
-        <span
-          style={{
-            fontSize: 10,
-            fontFamily: 'var(--font-dm-mono), monospace',
-            color: 'rgba(255,255,255,0.3)',
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 4,
-            padding: '1px 5px',
-          }}
-        >
-          v1.0 · local
-        </span>
+
+        <nav style={{ display: 'flex', gap: 4 }}>
+          <span style={{
+            padding: '4px 10px', fontFamily: 'var(--font-dm-mono), monospace', fontSize: 10, color: '#fff', background: '#111',
+            border: '1px solid #2a2a2a', letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'default'
+          }}>
+            Video
+          </span>
+          <Link href="/slides" style={{
+            padding: '4px 10px', fontFamily: 'var(--font-dm-mono), monospace', fontSize: 10, color: '#888', background: 'transparent',
+            border: '1px solid transparent', letterSpacing: '0.1em', textTransform: 'uppercase', textDecoration: 'none'
+          }}>
+            Slides →
+          </Link>
+          <Link
+            href="/html-slides"
+            title="Render HTML/CSS slides to PNG, then stitch in Remotion (HyperFrames-style pipeline)"
+            style={{
+              padding: '4px 10px',
+              fontFamily: 'var(--font-dm-mono), monospace',
+              fontSize: 10,
+              color: '#ccff00',
+              background: 'rgba(204,255,0,0.06)',
+              border: '1px solid rgba(204,255,0,0.35)',
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              textDecoration: 'none',
+            }}
+          >
+            HTML → video
+          </Link>
+        </nav>
       </div>
 
-      {/* Spacer */}
-      <div style={{ flex: 1 }} />
-
-      {/* Editable project name */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      {/* CENTER: Editable project name */}
+      <div className="editor-topbar-center">
         {editing ? (
           <input
             id="project-name"
@@ -135,123 +139,53 @@ export function Topbar() {
             onBlur={commitName}
             onKeyDown={handleKeyDown}
             style={{
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(124,58,237,0.5)',
-              borderRadius: 6,
-              color: 'white',
-              fontFamily: 'var(--font-syne), system-ui, sans-serif',
-              fontWeight: 600,
-              fontSize: 13,
-              padding: '3px 8px',
-              outline: 'none',
-              minWidth: 160,
-              textAlign: 'center',
+              background: '#0a0a0a', border: '1px solid #333', color: '#ccff00',
+              fontFamily: 'var(--font-dm-mono), monospace', fontSize: 11, padding: '6px 12px',
+              outline: 'none', minWidth: 200, textAlign: 'center', letterSpacing: '0.05em'
             }}
           />
         ) : (
           <button
             onClick={() => setEditing(true)}
             style={{
-              background: 'none',
-              border: '1px solid transparent',
-              borderRadius: 6,
-              color: 'rgba(255,255,255,0.85)',
-              fontFamily: 'var(--font-syne), system-ui, sans-serif',
-              fontWeight: 600,
-              fontSize: 13,
-              padding: '3px 8px',
-              cursor: 'pointer',
-              transition: 'all 0.15s cubic-bezier(0.16,1,0.3,1)',
+              background: 'none', border: '1px solid transparent', color: '#888',
+              fontFamily: 'var(--font-dm-mono), monospace', fontSize: 11, padding: '6px 12px',
+              cursor: 'pointer', letterSpacing: '0.05em', whiteSpace: 'nowrap'
             }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'none';
-              e.currentTarget.style.borderColor = 'transparent';
-            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = '#fff'}
+            onMouseLeave={(e) => e.currentTarget.style.color = '#888'}
           >
-            {current.name}
+            [ {current.name} ]
           </button>
         )}
       </div>
 
-      {/* Spacer */}
-      <div style={{ flex: 1 }} />
-
-      {/* Actions */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        {/* Keyboard hint */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            color: 'rgba(255,255,255,0.25)',
-            fontSize: 11,
-            fontFamily: 'var(--font-dm-mono), monospace',
-          }}
-        >
-          <Keyboard size={12} />
-          <span>⌘S</span>
-        </div>
-
+      {/* RIGHT: Actions */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <button
           onClick={handleNew}
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 5,
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 6,
-            color: 'rgba(255,255,255,0.7)',
-            fontSize: 12,
-            fontFamily: 'var(--font-dm-sans), system-ui, sans-serif',
-            fontWeight: 500,
-            padding: '5px 10px',
-            cursor: 'pointer',
-            transition: 'all 0.15s cubic-bezier(0.16,1,0.3,1)',
+            background: 'transparent', border: '1px solid #333', color: '#888',
+            fontSize: 10, fontWeight: 600, fontFamily: 'var(--font-dm-mono), monospace',
+            padding: '6px 12px', cursor: 'pointer', letterSpacing: '0.05em', textTransform: 'uppercase'
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
-            e.currentTarget.style.color = 'white';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
-            e.currentTarget.style.color = 'rgba(255,255,255,0.7)';
-          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = '#666'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = '#888'; e.currentTarget.style.borderColor = '#333'; }}
         >
-          <FilePlus size={14} />
           New
         </button>
 
         <button
           onClick={handleSave}
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 5,
-            background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
-            border: 'none',
-            borderRadius: 6,
-            color: 'white',
-            fontSize: 12,
-            fontFamily: 'var(--font-dm-sans), system-ui, sans-serif',
-            fontWeight: 500,
-            padding: '5px 12px',
-            cursor: 'pointer',
-            transition: 'all 0.15s cubic-bezier(0.16,1,0.3,1)',
+            background: '#ccff00', border: '1px solid #ccff00', color: '#000',
+            fontSize: 10, fontWeight: 700, fontFamily: 'var(--font-dm-mono), monospace',
+            padding: '6px 16px', cursor: 'pointer', letterSpacing: '0.05em', textTransform: 'uppercase',
+            boxShadow: '0 0 12px rgba(204,255,0,0.15)'
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'linear-gradient(135deg, #8b5cf6, #7c3aed)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'linear-gradient(135deg, #7c3aed, #6d28d9)';
-          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#fff'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = '#ccff00'; e.currentTarget.style.borderColor = '#ccff00'; }}
         >
-          <Save size={14} />
           Save
         </button>
       </div>

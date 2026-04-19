@@ -7,8 +7,18 @@ const PROJECT_DIR = process.cwd();
 const BIN = path.join(PROJECT_DIR, "node_modules/.bin");
 
 export async function POST(req: NextRequest) {
-  const { composition } = await req.json();
-  if (!composition) return NextResponse.json({ error: "composition required" }, { status: 400 });
+  let composition: unknown;
+  try {
+    ({ composition } = await req.json());
+  } catch {
+    return NextResponse.json({ error: "request body must be JSON with { composition }" }, { status: 400 });
+  }
+  if (typeof composition !== "string" || !composition.trim()) {
+    return NextResponse.json({ error: "composition required" }, { status: 400 });
+  }
+  if (!/^[a-zA-Z0-9_-]+$/.test(composition)) {
+    return NextResponse.json({ error: "invalid composition id" }, { status: 400 });
+  }
 
   const outDir = path.join(PROJECT_DIR, "out");
   fs.mkdirSync(outDir, { recursive: true });

@@ -1,87 +1,25 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { ChevronDown, ChevronRight, Download, Loader } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useEditorStore } from '@/stores/editor-store';
-import { useProjectStore } from '@/stores/project-store';
+import { useEditorStore, REEL_ASPECTS, REEL_PACE, MOTION_FEEL } from '@/stores/editor-store';
 import { COMPOSITION_CONFIGS } from '@/lib/composition-configs';
-import { PLATFORMS } from '@/lib/platforms';
 
 type RenderState = 'idle' | 'rendering' | 'done' | 'error';
+interface RenderProgress { progress: number; frame: number; total: number; }
 
-interface RenderProgress {
-  progress: number;
-  frame: number;
-  total: number;
-}
-
-function CollapsibleSection({
-  title,
-  defaultOpen = true,
-  children,
-}: {
-  title: string;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-
+function InspectorSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div
-      style={{
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
-      }}
-    >
-      <button
-        onClick={() => setOpen((v) => !v)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          width: '100%',
-          padding: '10px 14px',
-          background: 'none',
-          border: 'none',
-          color: 'rgba(255,255,255,0.5)',
-          fontSize: 10,
-          fontFamily: 'var(--font-syne), system-ui, sans-serif',
-          fontWeight: 700,
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          cursor: 'pointer',
-          transition: 'color 0.15s',
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.8)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
-      >
+    <div style={{ borderBottom: '1px solid #1a1a1a', padding: '24px' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#ccff00', fontFamily: 'var(--font-dm-mono), monospace', marginBottom: 20, textTransform: 'uppercase', letterSpacing: '0.15em' }}>
         {title}
-        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-      </button>
-
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            style={{ overflow: 'hidden' }}
-          >
-            <div style={{ padding: '0 14px 14px' }}>
-              {children}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </div>
+      {children}
     </div>
   );
 }
 
 export function RightInspector() {
-  const { activeComposition, compositionConfig } = useEditorStore();
-  const { current, setPlatform } = useProjectStore();
-  const [crf, setCrf] = useState(18);
+  const { activeComposition, compositionConfig, aspect, pace, motionFeel, captionTone, transitionEnergy, targetDurationSec } = useEditorStore();
   const [renderState, setRenderState] = useState<RenderState>('idle');
   const [renderProgress, setRenderProgress] = useState<RenderProgress>({ progress: 0, frame: 0, total: 0 });
   const [renderError, setRenderError] = useState<string | null>(null);
@@ -91,9 +29,13 @@ export function RightInspector() {
     ? compositionConfig ?? COMPOSITION_CONFIGS[activeComposition]
     : null;
 
-  const estimatedMB = config
-    ? Math.round((config.durationInFrames / config.fps) * 2)
-    : 0;
+  // Fall back to the user's chosen canvas when no composition has rendered yet
+  // — so the inspector still gives a live read of "what we'll render".
+  const aspectMeta = REEL_ASPECTS[aspect];
+  const displayWidth = config?.width ?? aspectMeta.w;
+  const displayHeight = config?.height ?? aspectMeta.h;
+  const displayFps = config?.fps ?? 30;
+  const displayLen = config?.durationInFrames ?? null;
 
   const handleRender = async () => {
     if (!activeComposition || renderState === 'rendering') return;
@@ -109,9 +51,7 @@ export function RightInspector() {
         body: JSON.stringify({ composition: activeComposition }),
       });
 
-      if (!res.ok || !res.body) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
       const reader = res.body.getReader();
       readerRef.current = reader;
@@ -131,13 +71,12 @@ export function RightInspector() {
           try {
             const ev = JSON.parse(line) as Record<string, unknown>;
             switch (ev.type) {
-              case 'progress':
+              case 'bundling':
+                setRenderProgress({ progress: Math.round(((ev.progress as number) ?? 0) * 0.25), frame: 0, total: 0 });
+                break;
               case 'encoding':
-                setRenderProgress({
-                  progress: (ev.progress as number) ?? 0,
-                  frame: (ev.frame as number) ?? 0,
-                  total: (ev.total as number) ?? 0,
-                });
+              case 'progress':
+                setRenderProgress({ progress: (ev.progress as number) ?? 0, frame: (ev.frame as number) ?? 0, total: (ev.total as number) ?? 0 });
                 break;
               case 'done':
                 setRenderState('done');
@@ -146,10 +85,8 @@ export function RightInspector() {
               case 'error':
                 throw new Error(ev.output as string);
             }
-          } catch (parseErr) {
-            if (parseErr instanceof Error && parseErr.message !== 'Unexpected token') {
-              throw parseErr;
-            }
+          } catch {
+            // ignore
           }
         }
       }
@@ -162,377 +99,138 @@ export function RightInspector() {
   return (
     <div
       style={{
-        width: 280,
-        flexShrink: 0,
-        background: '#0f0f0f',
-        borderLeft: '1px solid rgba(255,255,255,0.07)',
+        width: '100%',
+        minWidth: 0,
+        flex: 1,
+        background: '#000',
+        borderLeft: '1px solid #333',
         display: 'flex',
         flexDirection: 'column',
         overflowY: 'auto',
         height: '100%',
       }}
     >
-      {/* Section: Platform & Format */}
-      <CollapsibleSection title="Platform & Format">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
-            {PLATFORMS.map((p) => {
-              const selected = current.platform === p.id;
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => setPlatform(p.id)}
-                  style={{
-                    padding: '7px 8px',
-                    borderRadius: 6,
-                    border: selected
-                      ? '1px solid rgba(124,58,237,0.55)'
-                      : '1px solid rgba(255,255,255,0.08)',
-                    background: selected
-                      ? 'rgba(124,58,237,0.14)'
-                      : 'rgba(255,255,255,0.03)',
-                    color: selected ? '#a78bfa' : 'rgba(255,255,255,0.55)',
-                    fontSize: 10,
-                    fontFamily: 'var(--font-syne), system-ui, sans-serif',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    textAlign: 'center',
-                    transition: 'all 0.15s cubic-bezier(0.16,1,0.3,1)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 2,
-                    alignItems: 'center',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!selected) {
-                      e.currentTarget.style.borderColor = 'rgba(124,58,237,0.35)';
-                      e.currentTarget.style.color = 'rgba(255,255,255,0.8)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!selected) {
-                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
-                      e.currentTarget.style.color = 'rgba(255,255,255,0.55)';
-                    }
-                  }}
-                >
-                  <span>{p.name}</span>
-                  <span
-                    style={{
-                      fontSize: 9,
-                      fontFamily: 'var(--font-dm-mono), monospace',
-                      color: selected ? 'rgba(167,139,250,0.7)' : 'rgba(255,255,255,0.3)',
-                    }}
-                  >
-                    {p.aspectRatio}
-                  </span>
-                </button>
-              );
-            })}
+      {/* Header */}
+      <div style={{ padding: '24px 24px 0 24px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 11, fontFamily: 'var(--font-dm-mono), monospace', color: '#888', letterSpacing: '0.05em' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>RES:</span>
+            <span style={{ color: '#ccc' }}>{displayWidth}×{displayHeight}</span>
           </div>
-
-          {/* Composition info */}
-          {config && (
-            <div
-              style={{
-                padding: '8px 10px',
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: 6,
-                fontSize: 10,
-                fontFamily: 'var(--font-dm-mono), monospace',
-                color: 'rgba(255,255,255,0.35)',
-                lineHeight: 1.7,
-              }}
-            >
-              <div>{config.width}×{config.height} px</div>
-              <div>{config.fps} fps · {Math.round(config.durationInFrames / config.fps)}s</div>
-              <div>{config.durationInFrames} frames</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>FPS:</span>
+            <span style={{ color: '#ccc' }}>{displayFps}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>LEN:</span>
+            <span style={{ color: '#ccc' }}>{displayLen != null ? `${displayLen} FR` : '—'}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>TARGET:</span>
+            <span style={{ color: '#ccff00' }}>{targetDurationSec}s</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>CANVAS:</span>
+            <span style={{ color: '#ccff00' }}>{aspect}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>PACE:</span>
+            <span style={{ color: '#ccff00', textTransform: 'uppercase' }}>{pace}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>MOTION:</span>
+            <span style={{ color: '#888', textTransform: 'capitalize' }}>{motionFeel}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>COPY:</span>
+            <span style={{ color: '#888', textTransform: 'capitalize' }}>{captionTone}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>CUTS:</span>
+            <span style={{ color: '#888', textTransform: 'uppercase' }}>{transitionEnergy}</span>
+          </div>
+          {!activeComposition && (
+            <div style={{ marginTop: 8, color: '#555', fontSize: 10 }}>
+              NO COMPOSITION · hit generate
+            </div>
+          )}
+          {activeComposition && (
+            <div style={{ marginTop: 4, color: '#666', fontSize: 10, lineHeight: 1.45 }}>
+              {REEL_PACE[pace].blurb}
+              <br />
+              {MOTION_FEEL[motionFeel].remotionHint.slice(0, 72)}…
             </div>
           )}
         </div>
-      </CollapsibleSection>
+      </div>
 
-      {/* Section: Quality */}
-      <CollapsibleSection title="Quality">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div>
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                marginBottom: 6,
-                fontSize: 11,
-                fontFamily: 'var(--font-dm-sans), system-ui, sans-serif',
-                color: 'rgba(255,255,255,0.55)',
-              }}
-            >
-              <span>CRF</span>
-              <span
-                style={{
-                  fontFamily: 'var(--font-dm-mono), monospace',
-                  color: '#a78bfa',
-                }}
-              >
-                {crf}
-              </span>
+      <InspectorSection title="VIDEO SETTINGS">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontFamily: 'var(--font-dm-mono), monospace', color: '#888', alignItems: 'center', letterSpacing: '0.05em' }}>
+            <span>FORMAT</span>
+            <span style={{ color: '#ccc', border: '1px solid #333', padding: '4px 8px', borderRadius: 4 }}>MP4</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontFamily: 'var(--font-dm-mono), monospace', color: '#888', alignItems: 'center', letterSpacing: '0.05em' }}>
+            <span>QUALITY</span>
+            <span style={{ color: '#ccc', border: '1px solid #333', padding: '4px 8px', borderRadius: 4 }}>HIGH</span>
+          </div>
+        </div>
+      </InspectorSection>
+
+      <InspectorSection title="EXPORT VIDEO">
+        <button
+          onClick={handleRender}
+          disabled={!activeComposition || renderState === 'rendering'}
+          className="btn-primary"
+          style={{
+            width: '100%',
+            cursor: !activeComposition || renderState === 'rendering' ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {renderState === 'rendering' ? 'RENDERING...' : 'START RENDER'}
+        </button>
+
+        {renderState === 'rendering' && (
+          <div style={{ marginTop: 16, border: '1px solid #333', background: '#050505', padding: 16, borderRadius: 4 }}>
+            <div style={{ height: 4, background: '#111', marginBottom: 12, overflow: 'hidden', borderRadius: 2 }}>
+              <div style={{ height: '100%', width: `${renderProgress.progress}%`, background: '#ccff00', transition: 'width 0.2s ease' }} />
             </div>
-            <input
-              id="crf-slider"
-              name="crf-slider"
-              type="range"
-              min={15}
-              max={28}
-              value={crf}
-              onChange={(e) => setCrf(parseInt(e.target.value))}
-              style={{ width: '100%', accentColor: '#7c3aed', cursor: 'pointer' }}
-            />
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                marginTop: 4,
-                fontSize: 9,
-                fontFamily: 'var(--font-dm-mono), monospace',
-                color: 'rgba(255,255,255,0.2)',
-              }}
-            >
-              <span>lossless</span>
-              <span>smaller</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontFamily: 'var(--font-dm-mono), monospace', color: '#888' }}>
+              <span>FRAME {renderProgress.frame} / {renderProgress.total}</span>
+              <span>{Math.round(renderProgress.progress)}%</span>
             </div>
           </div>
+        )}
 
-          <div
+        {renderState === 'done' && activeComposition && (
+          <a
+            href={`/api/download?comp=${encodeURIComponent(activeComposition)}`}
+            download={`${activeComposition}.mp4`}
+            className="btn-primary"
             style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 16, width: '100%',
+              textDecoration: 'none'
             }}
           >
-            <span
-              style={{
-                fontSize: 11,
-                fontFamily: 'var(--font-dm-sans), system-ui, sans-serif',
-                color: 'rgba(255,255,255,0.4)',
-              }}
-            >
-              Codec
-            </span>
-            <span
-              style={{
-                fontSize: 10,
-                fontFamily: 'var(--font-dm-mono), monospace',
-                color: 'rgba(255,255,255,0.3)',
-                background: 'rgba(255,255,255,0.05)',
-                padding: '2px 7px',
-                borderRadius: 4,
-              }}
-            >
-              H.264
-            </span>
+            DOWNLOAD VIDEO
+          </a>
+        )}
+
+        {renderState === 'error' && renderError && (
+          <div style={{ marginTop: 16, border: '1px solid #ff3300', background: '#1a0500', color: '#ff3300', padding: 14, fontSize: 10, fontFamily: 'var(--font-dm-mono), monospace', lineHeight: 1.5, borderRadius: 4 }}>
+            FAILED: {renderError}
           </div>
+        )}
 
-          {estimatedMB > 0 && (
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 11,
-                  fontFamily: 'var(--font-dm-sans), system-ui, sans-serif',
-                  color: 'rgba(255,255,255,0.4)',
-                }}
-              >
-                Est. size
-              </span>
-              <span
-                style={{
-                  fontSize: 10,
-                  fontFamily: 'var(--font-dm-mono), monospace',
-                  color: 'rgba(255,255,255,0.3)',
-                  background: 'rgba(255,255,255,0.05)',
-                  padding: '2px 7px',
-                  borderRadius: 4,
-                }}
-              >
-                ~{estimatedMB} MB
-              </span>
-            </div>
-          )}
-        </div>
-      </CollapsibleSection>
-
-      {/* Section: Render & Export */}
-      <CollapsibleSection title="Render & Export">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {/* Render button */}
+        {(renderState === 'done' || renderState === 'error') && (
           <button
-            onClick={handleRender}
-            disabled={!activeComposition || renderState === 'rendering'}
-            style={{
-              width: '100%',
-              padding: '11px',
-              borderRadius: 8,
-              border: 'none',
-              background:
-                renderState === 'rendering'
-                  ? 'rgba(124,58,237,0.3)'
-                  : !activeComposition
-                  ? 'rgba(255,255,255,0.05)'
-                  : 'linear-gradient(135deg, #7c3aed, #6d28d9)',
-              color: !activeComposition ? 'rgba(255,255,255,0.3)' : 'white',
-              fontSize: 13,
-              fontFamily: 'var(--font-syne), system-ui, sans-serif',
-              fontWeight: 700,
-              cursor: !activeComposition || renderState === 'rendering' ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 7,
-              transition: 'all 0.15s cubic-bezier(0.16,1,0.3,1)',
-              boxShadow:
-                activeComposition && renderState === 'idle'
-                  ? '0 0 16px rgba(124,58,237,0.35)'
-                  : 'none',
-            }}
+            onClick={() => { setRenderState('idle'); setRenderError(null); }}
+            style={{ display: 'block', marginTop: 24, width: '100%', background: 'none', border: 'none', color: '#666', fontSize: 10, fontFamily: 'var(--font-dm-mono), monospace', cursor: 'pointer', textAlign: 'center', textDecoration: 'underline', textTransform: 'uppercase' }}
           >
-            {renderState === 'rendering' ? (
-              <>
-                <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                Rendering…
-              </>
-            ) : (
-              'Render → MP4'
-            )}
+            START NEW RENDER
           </button>
-
-          {/* Progress bar */}
-          <AnimatePresence>
-            {renderState === 'rendering' && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
-              >
-                <div
-                  style={{
-                    height: 4,
-                    background: 'rgba(255,255,255,0.08)',
-                    borderRadius: 2,
-                    overflow: 'hidden',
-                  }}
-                >
-                  <motion.div
-                    animate={{ width: `${renderProgress.progress}%` }}
-                    transition={{ duration: 0.4 }}
-                    style={{
-                      height: '100%',
-                      background: 'linear-gradient(90deg, #7c3aed, #a78bfa)',
-                      borderRadius: 2,
-                    }}
-                  />
-                </div>
-                <div
-                  style={{
-                    fontSize: 10,
-                    fontFamily: 'var(--font-dm-mono), monospace',
-                    color: 'rgba(255,255,255,0.35)',
-                    textAlign: 'center',
-                  }}
-                >
-                  {renderProgress.total > 0
-                    ? `frame ${renderProgress.frame} / ${renderProgress.total}`
-                    : `${renderProgress.progress}%`}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Done state */}
-          <AnimatePresence>
-            {renderState === 'done' && activeComposition && (
-              <motion.a
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                href={`/out/${activeComposition}.mp4`}
-                download
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 7,
-                  padding: '10px',
-                  borderRadius: 8,
-                  border: '1px solid rgba(52,211,153,0.35)',
-                  background: 'rgba(52,211,153,0.1)',
-                  color: '#34d399',
-                  fontSize: 13,
-                  fontFamily: 'var(--font-syne), system-ui, sans-serif',
-                  fontWeight: 700,
-                  textDecoration: 'none',
-                  transition: 'all 0.15s cubic-bezier(0.16,1,0.3,1)',
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(52,211,153,0.18)';
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(52,211,153,0.1)';
-                }}
-              >
-                <Download size={14} />
-                Download MP4
-              </motion.a>
-            )}
-          </AnimatePresence>
-
-          {/* Error state */}
-          <AnimatePresence>
-            {renderState === 'error' && renderError && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                style={{
-                  padding: '8px 10px',
-                  background: 'rgba(239,68,68,0.08)',
-                  border: '1px solid rgba(239,68,68,0.25)',
-                  borderRadius: 6,
-                  fontSize: 10,
-                  fontFamily: 'var(--font-dm-sans), system-ui, sans-serif',
-                  color: '#ef4444',
-                  lineHeight: 1.5,
-                }}
-              >
-                {renderError.slice(0, 200)}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Reset render state */}
-          {(renderState === 'done' || renderState === 'error') && (
-            <button
-              onClick={() => { setRenderState('idle'); setRenderError(null); }}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'rgba(255,255,255,0.3)',
-                fontSize: 10,
-                fontFamily: 'var(--font-dm-sans), system-ui, sans-serif',
-                cursor: 'pointer',
-                textAlign: 'center',
-                padding: '4px',
-              }}
-            >
-              Render again
-            </button>
-          )}
-        </div>
-      </CollapsibleSection>
+        )}
+      </InspectorSection>
     </div>
   );
 }
