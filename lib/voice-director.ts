@@ -23,8 +23,9 @@ export function buildVoiceDirection(opts: {
   contentSeed?: string; // hash source for reproducibility (e.g. componentName)
   /** Comedy roast: drier, more side-eye delivery — not corporate narrator */
   roastDelivery?: boolean;
+  sceneRole?: "hook" | "build" | "payoff" | "cta";
 }): VoiceDirection {
-  const { captionTone, motionFeel, contentSeed, roastDelivery } = opts;
+  const { captionTone, motionFeel, contentSeed, roastDelivery, sceneRole = "build" } = opts;
 
   // Derive a stable numeric seed from the content identifier
   // Same content → same seed → same voice performance every render
@@ -50,7 +51,14 @@ export function buildVoiceDirection(opts: {
     dreamy: " Slightly soft and ethereal. Like narrating a dream.",
   };
 
-  let instruct = (toneInstructs[captionTone] + motionModifiers[motionFeel]).slice(0, 500);
+  const sceneRoleModifiers = {
+    hook: " Start strong. Land the first phrase immediately and make the opening feel deliberate.",
+    build: " Build momentum sentence by sentence without sounding rushed.",
+    payoff: " Slow slightly on the reveal and let the final phrase breathe.",
+    cta: " Keep the closing clean and direct. No salesy lift at the end.",
+  } as const;
+
+  let instruct = (toneInstructs[captionTone] + motionModifiers[motionFeel] + sceneRoleModifiers[sceneRole]).slice(0, 500);
   if (roastDelivery) {
     instruct =
       ("Dry comedy roast. Side-eye energy, slightly deadpan; never corporate or motivational. " +
@@ -87,16 +95,27 @@ export function buildNarrationText(opts: {
   totalScenes: number;
 }): string {
   const { caption, kicker, narration, captionTone } = opts;
+  const antiJargon = (text: string) =>
+    text
+      .replace(/\bPOV:\s*/gi, "")
+      .replace(/\bit'?s giving\b/gi, "it feels")
+      .replace(/\bno cap\b/gi, "honestly")
+      .replace(/\bsave (this|it)( for later)?\b/gi, "")
+      .replace(/\bfollow for (more|part ?2|pt ?2)\b/gi, "")
+      .replace(/\bmain character\b/gi, "centerpiece")
+      .replace(/\bquiet luxury\b/gi, "restrained luxury")
+      .replace(/\s{2,}/g, " ")
+      .trim();
 
   // If Gemma wrote a dedicated narration, use it (already natural speech)
-  if (narration && narration.trim().length > 10) return narration.trim();
+  if (narration && narration.trim().length > 10) return antiJargon(narration.trim());
 
   // Otherwise, synthesize from caption + kicker
   const parts: string[] = [];
 
   // Kicker as intro context (strip numbering like "01 / 05", "PHASE 01 · LAUNCH")
   if (kicker) {
-    const cleanKicker = kicker
+    const cleanKicker = antiJargon(kicker)
       .replace(/^\d+\s*[\/·]\s*\d+\s*/g, "")  // strip "01 / 05"
       .replace(/PHASE\s+\d+\s*[·:]\s*/gi, "")  // strip "PHASE 01 ·"
       .replace(/T\+[\w:]+\s*[·:]\s*/gi, "")    // strip "T+MISSION ·"
@@ -105,7 +124,7 @@ export function buildNarrationText(opts: {
   }
 
   // Caption: clean up ALL-CAPS for natural speech
-  const cleanCaption = caption
+  const cleanCaption = antiJargon(caption)
     .replace(/\./g, ". ")           // ensure space after periods
     .replace(/\s+/g, " ")
     .trim();

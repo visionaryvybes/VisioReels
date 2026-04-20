@@ -9,15 +9,46 @@ const BANNED_PHRASES = [
   "buckle up",
   "the future of",
   "curated",
+  "vibe check",
+  "main character",
+  "quiet luxury",
+  "old money aesthetic",
+  "save this for later",
+  "follow for pt 2",
+  "follow for more",
+  "no cap",
+  "it's giving",
+  "living my best life",
+  "journey",
+  "disruptive",
+  "synergy",
 ] as const;
 
-function normalizeText(text: string): string {
+const WEAK_PATTERNS = [
+  "save this",
+  "save for later",
+  "follow for more",
+  "comment your thoughts",
+  "link in bio",
+  "swipe to see",
+  "stop scrolling",
+  "did you know",
+  "the truth about",
+  "this is why",
+] as const;
+
+export function normalizeText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
 export function findBannedPhrases(text: string): string[] {
   const haystack = normalizeText(text).toLowerCase();
   return BANNED_PHRASES.filter((phrase) => haystack.includes(phrase));
+}
+
+export function findWeakPatterns(text: string): string[] {
+  const haystack = normalizeText(text).toLowerCase();
+  return WEAK_PATTERNS.filter((phrase) => haystack.includes(phrase));
 }
 
 export function isThinText(text: string, minWords: number): boolean {

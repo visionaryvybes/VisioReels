@@ -17,7 +17,7 @@ import {
   type HyperframesCreativeProfile,
   type HyperframesMotionFeel,
 } from "@/lib/hyperframes-prompt";
-import { findBannedPhrases, isThinText } from "@/lib/copy-guard";
+import { findBannedPhrases, findWeakPatterns, isThinText } from "@/lib/copy-guard";
 import { renderHtmlSlidesToPng } from "@/lib/html-slide-render";
 import { computeHtmlSlideVideoDuration } from "@/lib/html-slide-duration";
 import type { ConceptBrief } from "@/lib/concept-brief";
@@ -28,6 +28,7 @@ import {
   FREEFORM_CODE_CREATIVE_DIRECTIVES,
   GEMMA_JSON_CREATIVE_DIRECTIVES,
   HTML_SLIDES_CREATIVE_DIRECTIVES,
+  PM_CRITIC_DIRECTIVES,
 } from "@/lib/agent-creative-directives";
 import { generateSpeech, resolveProfileForNarration, ensurePresetProfile } from "@/lib/voicebox";
 import { buildVoiceDirection, buildNarrationText, type CaptionTone, type MotionFeel } from "@/lib/voice-director";
@@ -680,6 +681,160 @@ async function runBrainPass(
   } catch {
     return { concept: { title: "", logline: "", hook: "", color_story: "", typography_mood: "", motion_energy: "", scene_beats: [] }, brief: null };
   }
+}
+
+interface WorkflowCritique {
+  approved: boolean;
+  route_fit: "strong" | "acceptable" | "weak";
+  summary: string;
+  scene_issues: string[];
+  copy_issues: string[];
+  narration_issues: string[];
+  action_items: string[];
+}
+
+function normalizeWorkflowCritique(raw: unknown): WorkflowCritique | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const list = (value: unknown, limit = 8) =>
+    Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v.trim().length > 0).slice(0, limit) : [];
+
+  return {
+    approved: obj.approved === true,
+    route_fit:
+      obj.route_fit === "strong" || obj.route_fit === "weak" ? obj.route_fit : "acceptable",
+    summary: typeof obj.summary === "string" ? obj.summary.trim().slice(0, 240) : "",
+    scene_issues: list(obj.scene_issues),
+    copy_issues: list(obj.copy_issues),
+    narration_issues: list(obj.narration_issues),
+    action_items: list(obj.action_items),
+  };
+}
+
+async function runWorkflowCriticPass(opts: {
+  userBrief: string;
+  pipeline: "remotion" | "hyperframes" | "freeform";
+  creative: HyperframesCreativeProfile;
+  brief: DirectorBrief;
+}): Promise<WorkflowCritique | null> {
+  const prompt = `${PM_CRITIC_DIRECTIVES}
+
+Pipeline: ${opts.pipeline}
+Creative profile: motion=${opts.creative.motionFeel} | copy=${opts.creative.captionTone} | transition=${opts.creative.transitionEnergy}
+User brief:
+${opts.userBrief.slice(0, 1200)}
+
+Director brief JSON:
+${JSON.stringify(opts.brief).slice(0, 14_000)}
+
+Return:
+{
+  "approved": boolean,
+  "route_fit": "strong|acceptable|weak",
+  "summary": "short producer summary",
+  "scene_issues": ["scene-specific issue"],
+  "copy_issues": ["copy/narration issue"],
+  "narration_issues": ["audio-readability issue"],
+  "action_items": ["specific change the planner/executor should make"]
+}`;
+  try {
+    const raw = await callOllamaChat([{ role: "user", content: prompt }], true);
+    return normalizeWorkflowCritique(safeJson(raw));
+  } catch {
+    return null;
+  }
+}
+
+async function repairDirectorBriefWithCritic(opts: {
+  userBrief: string;
+  pipeline: "remotion" | "hyperframes" | "freeform";
+  creative: HyperframesCreativeProfile;
+  brief: DirectorBrief;
+  critique: WorkflowCritique;
+  maxScenes: number;
+}): Promise<DirectorBrief | null> {
+  const prompt = `${BRAIN_CREATIVE_DIRECTIVES}
+
+You are revising a director brief after PM/critic review. Keep the strong parts. Fix only what the critique calls out.
+
+Pipeline: ${opts.pipeline}
+Creative profile: motion=${opts.creative.motionFeel} | copy=${opts.creative.captionTone} | transition=${opts.creative.transitionEnergy}
+User brief:
+${opts.userBrief.slice(0, 1200)}
+
+CURRENT BRIEF JSON:
+${JSON.stringify(opts.brief).slice(0, 14_000)}
+
+CRITIQUE:
+${JSON.stringify(opts.critique).slice(0, 6000)}
+
+Return ONE corrected director-brief JSON object only. Keep scene count <= ${opts.maxScenes}.`;
+  try {
+    const raw = await callOllamaChat([{ role: "user", content: prompt }], true);
+    return parseDirectorBrief(raw, opts.maxScenes);
+  } catch {
+    return null;
+  }
+}
+
+async function runManagedBrainPass(opts: {
+  userBrief: string;
+  visionNotes: VisionNote[];
+  attachmentOrder: { path: string; name: string }[] | null;
+  aspect: string;
+  creative: HyperframesCreativeProfile;
+  targetSec: number;
+  maxScenes: number;
+  pipeline: "remotion" | "hyperframes" | "freeform";
+  send?: (event: Record<string, unknown>) => void;
+}): Promise<{ concept: ConceptBrief; brief: DirectorBrief | null; critique: WorkflowCritique | null }> {
+  const first = await runBrainPass(
+    opts.userBrief,
+    opts.visionNotes,
+    opts.attachmentOrder,
+    opts.aspect,
+    opts.creative,
+    opts.targetSec,
+    opts.maxScenes
+  );
+
+  let brief = first.brief;
+  let concept = first.concept;
+  let critique: WorkflowCritique | null = null;
+
+  if (brief) {
+    opts.send?.({ type: "pm_stage", role: "critic", text: "PM critic · reviewing plan before execution…" });
+    critique = await runWorkflowCriticPass({
+      userBrief: opts.userBrief,
+      pipeline: opts.pipeline,
+      creative: opts.creative,
+      brief,
+    });
+
+    if (critique) {
+      opts.send?.({ type: "pm_report", critique });
+      const needsRepair =
+        critique.approved !== true &&
+        (critique.route_fit === "weak" || critique.scene_issues.length > 0 || critique.copy_issues.length > 0);
+      if (needsRepair) {
+        opts.send?.({ type: "pm_stage", role: "planner", text: "Planner revision · applying PM feedback…" });
+        const repaired = await repairDirectorBriefWithCritic({
+          userBrief: opts.userBrief,
+          pipeline: opts.pipeline,
+          creative: opts.creative,
+          brief,
+          critique,
+          maxScenes: opts.maxScenes,
+        });
+        if (repaired) {
+          brief = repaired;
+          concept = briefToConceptCompat(repaired);
+        }
+      }
+    }
+  }
+
+  return { concept, brief, critique };
 }
 
 async function describeImage(a: ImageStats, captionTone?: HyperframesCaptionTone): Promise<VisionNote> {
@@ -1587,6 +1742,10 @@ function findBaselineCopyGuardIssues(
   if (banned.length > 0) {
     issues.push(`${opts.label}: banned phrases (${banned.join(", ")})`);
   }
+  const weak = findWeakPatterns(normalized);
+  if (weak.length > 0) {
+    issues.push(`${opts.label}: weak phrases (${weak.join(", ")})`);
+  }
   if (isThinText(normalized, copyGuardMinWords(opts.captionTone, opts.hasNarration === true))) {
     issues.push(`${opts.label}: thin copy`);
   }
@@ -1908,7 +2067,16 @@ function renderReelComponent(
   spec: ReelSpec,
   sceneLen: number,
   transLen: number,
-  opts: { captionFont: string; kickerFont: string; decor: ReelDecorId; sceneTTSPaths?: string[]; gradePreset?: string }
+  opts: {
+    captionFont: string;
+    kickerFont: string;
+    decor: ReelDecorId;
+    theme?: string;
+    motionFeel?: string;
+    transitionEnergy?: string;
+    sceneTTSPaths?: string[];
+    gradePreset?: string;
+  }
 ): string {
   const json = JSON.stringify(spec.scenes, null, 2);
   const indentedJson = json
@@ -1919,6 +2087,9 @@ function renderReelComponent(
   const cap = JSON.stringify(opts.captionFont);
   const kick = JSON.stringify(opts.kickerFont);
   const decor = JSON.stringify(opts.decor);
+  const theme = JSON.stringify(opts.theme ?? "impact");
+  const motionFeel = JSON.stringify(opts.motionFeel ?? "snappy");
+  const transitionEnergy = JSON.stringify(opts.transitionEnergy ?? "medium");
   const grade = JSON.stringify(opts.gradePreset ?? "neutral_punch");
   const ttsPathsJson = opts.sceneTTSPaths?.some((p) => p)
     ? JSON.stringify(opts.sceneTTSPaths)
@@ -1935,6 +2106,9 @@ export const ${componentName}: React.FC = () => {
       captionFontFamily={${cap}}
       kickerFontFamily={${kick}}
       decorStyle={${decor}}
+      theme={${theme}}
+      motionFeel={${motionFeel}}
+      transitionEnergy={${transitionEnergy}}
       gradePreset={${grade}}
       sceneLengthInFrames={${sceneLen}}
       transitionLengthInFrames={${transLen}}
@@ -2257,6 +2431,14 @@ async function generateSceneTTS(
       motionFeel: (motionFeel ?? "smooth") as MotionFeel,
       contentSeed: `${componentName}:${i}:${text}`,
       roastDelivery: roastDelivery === true,
+      sceneRole:
+        i === 0
+          ? "hook"
+          : i === scenes.length - 1
+            ? "cta"
+            : i >= scenes.length - 2
+              ? "payoff"
+              : "build",
     });
 
     const filename = `${componentName}-scene-${i}.wav`;
@@ -2455,15 +2637,17 @@ export async function POST(req: NextRequest) {
         }
 
         send({ type: "status", text: `Brain pass · creative director planning your video…` });
-        const { concept: hfConcept, brief: hfBrief } = await runBrainPass(
-          userMessage,
+        const { concept: hfConcept, brief: hfBrief } = await runManagedBrainPass({
+          userBrief: userMessage,
           visionNotes,
-          hasAttachments ? attachments : null,
+          attachmentOrder: hasAttachments ? attachments : null,
           aspect,
           creative,
-          targetDurationSec,
-          slideCap
-        );
+          targetSec: targetDurationSec,
+          maxScenes: slideCap,
+          pipeline: "hyperframes",
+          send,
+        });
         if (hfConcept.title) send({ type: "brain_concept", concept: hfConcept });
         if (hfBrief) send({ type: "director_brief", brief: hfBrief });
 
@@ -2639,6 +2823,8 @@ export async function POST(req: NextRequest) {
           height: h,
           sceneLengthInFrames: sceneLen,
           transitionLengthInFrames: transLen,
+          motionFeel: creative.motionFeel,
+          transitionEnergy: creative.transitionEnergy,
           ...(hfNarrationPaths.some(Boolean) ? { narrationPaths: hfNarrationPaths } : {}),
         };
         const durationInFrames = computeHtmlSlideVideoDuration(
@@ -2711,15 +2897,17 @@ export async function POST(req: NextRequest) {
         }
 
         send({ type: "status", text: `Brain pass · creative director planning scenes…` });
-        const { concept: reelConcept, brief: reelBrief } = await runBrainPass(
-          userMessage,
+        const { concept: reelConcept, brief: reelBrief } = await runManagedBrainPass({
+          userBrief: userMessage,
           visionNotes,
-          attachments,
+          attachmentOrder: attachments,
           aspect,
           creative,
-          targetDurationSec,
-          effectiveMaxScenes
-        );
+          targetSec: targetDurationSec,
+          maxScenes: effectiveMaxScenes,
+          pipeline: "remotion",
+          send,
+        });
         if (reelConcept.title) send({ type: "brain_concept", concept: reelConcept });
         if (reelBrief) send({ type: "director_brief", brief: reelBrief });
 
@@ -2880,6 +3068,9 @@ export async function POST(req: NextRequest) {
           captionFont: typo.captionFont,
           kickerFont: typo.kickerFont,
           decor: reelDecor,
+          theme: typo.theme,
+          motionFeel: creative.motionFeel,
+          transitionEnergy: creative.transitionEnergy,
           sceneTTSPaths: sceneTTSPaths.length > 0 ? sceneTTSPaths : undefined,
           gradePreset: autoGradePreset,
         });
@@ -2948,15 +3139,17 @@ export async function POST(req: NextRequest) {
       }
 
       send({ type: "status", text: `Brain pass · creative director planning your composition…` });
-      const { concept: freeformConcept, brief: freeformBrief } = await runBrainPass(
-        userMessage,
-        [],
-        null,
+      const { concept: freeformConcept, brief: freeformBrief } = await runManagedBrainPass({
+        userBrief: userMessage,
+        visionNotes: [],
+        attachmentOrder: null,
         aspect,
         creative,
-        targetDurationSec,
-        maxScenes
-      );
+        targetSec: targetDurationSec,
+        maxScenes,
+        pipeline: "freeform",
+        send,
+      });
       if (freeformConcept.title) send({ type: "brain_concept", concept: freeformConcept });
       if (freeformBrief) send({ type: "director_brief", brief: freeformBrief });
 

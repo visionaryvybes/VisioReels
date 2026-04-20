@@ -527,11 +527,76 @@ function textBackdrop(
   );
 }
 
-// Overlay rendering intentionally disabled — presets differ only in typography.
-// Background boxes/blocks/gradients covered the source images and degraded quality.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function renderOverlayLayer(_preset: SlidePreset, _accent: string) {
-  return null;
+function renderOverlayLayer(preset: SlidePreset, accent: string) {
+  switch (preset.overlay) {
+    case 'solid-bottom':
+      return (
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: '42%',
+            background: `linear-gradient(to top, ${preset.surface} 0%, ${preset.surface}ee 58%, transparent 100%)`,
+          }}
+        />
+      );
+    case 'gradient':
+      return (
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: `linear-gradient(to top, ${preset.surface} 0%, rgba(0,0,0,0.08) 36%, transparent 68%)`,
+          }}
+        />
+      );
+    case 'framed':
+      return (
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            inset: '6%',
+            border: `1.5px solid ${preset.surface}`,
+            boxShadow: `0 0 0 1px ${accent}33 inset`,
+            background: 'linear-gradient(to top, rgba(255,255,255,0.08), transparent 40%)',
+            pointerEvents: 'none',
+          }}
+        />
+      );
+    case 'vignette':
+      return (
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: `radial-gradient(circle at center, transparent 34%, ${preset.surface} 100%)`,
+          }}
+        />
+      );
+    case 'marquee':
+      return (
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            left: '5%',
+            right: '5%',
+            top: '40%',
+            height: '22%',
+            background: `linear-gradient(90deg, ${preset.surface}00 0%, ${preset.surface} 10%, ${preset.surface} 90%, ${preset.surface}00 100%)`,
+            boxShadow: `0 0 40px ${accent}22`,
+          }}
+        />
+      );
+    default:
+      return null;
+  }
 }
 
 function SplitLayout({

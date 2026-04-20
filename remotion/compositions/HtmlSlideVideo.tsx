@@ -1,5 +1,5 @@
 import React from "react";
-import { AbsoluteFill, Audio, Img, staticFile, useVideoConfig } from "remotion";
+import { AbsoluteFill, Audio, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { TransitionSeries, springTiming } from "@remotion/transitions";
 import { fade } from "@remotion/transitions/fade";
 import { slide } from "@remotion/transitions/slide";
@@ -20,6 +20,8 @@ export type HtmlSlideVideoProps = {
   /** Optional per-scene TTS audio paths (public-relative, e.g. "tts/scene-0.wav").
    *  When provided, the audio file at index i plays once at the start of scene i. */
   narrationPaths?: string[];
+  motionFeel?: "smooth" | "snappy" | "bouncy" | "dramatic" | "dreamy";
+  transitionEnergy?: "calm" | "medium" | "high";
 };
 
 function resolvePublicPath(src: string): string {
@@ -35,26 +37,130 @@ type AnyPresentation = TransitionPresentation<Record<string, unknown>>;
 // Varied transition cycle — more cinematic than fade-only
 // iris and clockWipe need width/height so they're built dynamically in the component
 type TransitionFactory = (w: number, h: number) => AnyPresentation;
-const TRANSITIONS: TransitionFactory[] = [
-  () => slide({ direction: "from-right" }) as AnyPresentation,
-  (w, h) => iris({ width: w, height: h }) as unknown as AnyPresentation,
-  () => wipe({ direction: "from-top-left" }) as AnyPresentation,
-  (w, h) => clockWipe({ width: w, height: h }) as unknown as AnyPresentation,
-  () => fade() as AnyPresentation,
-  () => slide({ direction: "from-bottom" }) as AnyPresentation,
-  () => flip({ direction: "from-right" }) as AnyPresentation,
-  () => wipe({ direction: "from-top-right" }) as AnyPresentation,
-  (w, h) => iris({ width: w, height: h }) as unknown as AnyPresentation,
-  () => fade() as AnyPresentation,
+const TRANSITION_FAMILIES: Record<
+  NonNullable<HtmlSlideVideoProps["transitionEnergy"]>,
+  TransitionFactory[]
+> = {
+  calm: [
+    () => fade() as AnyPresentation,
+    () => slide({ direction: "from-bottom" }) as AnyPresentation,
+    (w, h) => iris({ width: w, height: h }) as unknown as AnyPresentation,
+    () => fade() as AnyPresentation,
+  ],
+  medium: [
+    () => slide({ direction: "from-right" }) as AnyPresentation,
+    (w, h) => iris({ width: w, height: h }) as unknown as AnyPresentation,
+    () => wipe({ direction: "from-top-left" }) as AnyPresentation,
+    () => fade() as AnyPresentation,
+    () => slide({ direction: "from-bottom" }) as AnyPresentation,
+  ],
+  high: [
+    () => flip({ direction: "from-right" }) as AnyPresentation,
+    () => wipe({ direction: "from-top-right" }) as AnyPresentation,
+    (w, h) => clockWipe({ width: w, height: h }) as unknown as AnyPresentation,
+    () => slide({ direction: "from-right" }) as AnyPresentation,
+    (w, h) => iris({ width: w, height: h }) as unknown as AnyPresentation,
+  ],
+};
+
+const cameraVectors = [
+  { fromScale: 1.02, toScale: 1.08, fromX: -1.5, toX: 1.2, fromY: -1, toY: 1 },
+  { fromScale: 1.08, toScale: 1.01, fromX: 1.2, toX: -1.2, fromY: 1.4, toY: -0.8 },
+  { fromScale: 1.03, toScale: 1.1, fromX: 0.4, toX: -1.1, fromY: -1.4, toY: 1.2 },
+  { fromScale: 1.1, toScale: 1.04, fromX: -1, toX: 1.1, fromY: 0.8, toY: -1.1 },
 ];
+
+const SlideStill: React.FC<{
+  src: string;
+  index: number;
+  motionFeel: NonNullable<HtmlSlideVideoProps["motionFeel"]>;
+}> = ({ src, index, motionFeel }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const vector = cameraVectors[index % cameraVectors.length];
+  const motionStrength =
+    motionFeel === "dramatic" ? 1.15 : motionFeel === "dreamy" ? 0.72 : motionFeel === "snappy" ? 0.95 : 0.85;
+  const springProgress = spring({
+    fps,
+    frame,
+    config: {
+      damping: motionFeel === "bouncy" ? 12 : motionFeel === "dramatic" ? 24 : 18,
+      stiffness: motionFeel === "bouncy" ? 110 : 90,
+    },
+  });
+  const scale = interpolate(
+    springProgress,
+    [0, 1],
+    [vector.fromScale, vector.toScale + (motionStrength - 0.85) * 0.05]
+  );
+  const tx = interpolate(springProgress, [0, 1], [vector.fromX, vector.toX]) * motionStrength;
+  const ty = interpolate(springProgress, [0, 1], [vector.fromY, vector.toY]) * motionStrength;
+  const overlayOpacity = interpolate(frame, [0, 12, 40], [0.24, 0.08, 0], {
+    extrapolateRight: "clamp",
+  });
+
+  return (
+    <AbsoluteFill>
+      <AbsoluteFill>
+        <Img
+          src={resolvePublicPath(src)}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            filter: "blur(42px) brightness(0.62) saturate(1.2)",
+            transform: "scale(1.18)",
+          }}
+        />
+      </AbsoluteFill>
+      <AbsoluteFill
+        style={{
+          transform: `scale(${scale}) translate(${tx}%, ${ty}%)`,
+          transformOrigin: "center center",
+        }}
+      >
+        <Img
+          src={resolvePublicPath(src)}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+          }}
+        />
+      </AbsoluteFill>
+      <AbsoluteFill
+        style={{
+          background:
+            "linear-gradient(to top, rgba(0,0,0,0.44) 0%, rgba(0,0,0,0.12) 24%, transparent 55%)",
+        }}
+      />
+      <AbsoluteFill
+        style={{
+          background: "radial-gradient(circle at center, transparent 40%, rgba(0,0,0,0.42) 100%)",
+          opacity: overlayOpacity,
+          mixBlendMode: "screen",
+        }}
+      />
+    </AbsoluteFill>
+  );
+};
 
 export const HtmlSlideVideo: React.FC<HtmlSlideVideoProps> = ({
   slidePaths,
   sceneLengthInFrames = 90,
   transitionLengthInFrames = 12,
   narrationPaths,
+  motionFeel = "snappy",
+  transitionEnergy = "medium",
 }) => {
   const { width: vw, height: vh } = useVideoConfig();
+  const transitions = TRANSITION_FAMILIES[transitionEnergy] ?? TRANSITION_FAMILIES.medium;
+  const timingConfig =
+    transitionEnergy === "high"
+      ? { damping: 128, stiffness: 250 }
+      : transitionEnergy === "calm"
+        ? { damping: 220, stiffness: 155 }
+        : { damping: 180, stiffness: 200 };
 
   if (!slidePaths?.length) {
     return (
@@ -80,10 +186,10 @@ export const HtmlSlideVideo: React.FC<HtmlSlideVideoProps> = ({
         {slidePaths.map((src, i) => {
           // Spring timing for most transitions; slightly snappier for iris/wipe
           const timing = springTiming({
-            config: { damping: 180, stiffness: 200 },
+            config: timingConfig,
             durationInFrames: transitionLengthInFrames,
           });
-          const presentation = TRANSITIONS[i % TRANSITIONS.length](vw, vh);
+          const presentation = transitions[i % transitions.length](vw, vh);
 
           return (
             <React.Fragment key={`${i}-${src}`}>
@@ -94,16 +200,7 @@ export const HtmlSlideVideo: React.FC<HtmlSlideVideoProps> = ({
                 />
               ) : null}
               <TransitionSeries.Sequence durationInFrames={sceneLengthInFrames}>
-                <AbsoluteFill>
-                  <Img
-                    src={resolvePublicPath(src)}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                    }}
-                  />
-                </AbsoluteFill>
+                <SlideStill src={src} index={i} motionFeel={motionFeel} />
                 {narrationPaths?.[i] ? (
                   <Audio
                     src={staticFile(narrationPaths[i]!.replace(/^\.?\//, ""))}
