@@ -1083,12 +1083,41 @@ interface ReelScene {
   accent?: string;
   transition?: Transition;
   narration?: string;
+  textPlacement?: string;
 }
 
 interface ReelSpec {
   title?: string;
   brandName?: string;
   scenes: ReelScene[];
+}
+
+function normalizeTextPlacement(zone?: string): ReelScene["textPlacement"] {
+  const z = zone?.trim().toLowerCase();
+  if (
+    z === "bottom-left" ||
+    z === "bottom-center" ||
+    z === "top-left" ||
+    z === "top-center" ||
+    z === "left-panel" ||
+    z === "right-panel" ||
+    z === "center"
+  ) {
+    return z;
+  }
+  return undefined;
+}
+
+function applyVisionTextPlacement(spec: ReelSpec, visionNotes: VisionNote[]): ReelSpec {
+  if (!spec.scenes.length || !visionNotes.length) return spec;
+  const byPath = new Map(visionNotes.map((n) => [n.path, normalizeTextPlacement(n.text_zone)]));
+  return {
+    ...spec,
+    scenes: spec.scenes.map((scene) => ({
+      ...scene,
+      textPlacement: byPath.get(scene.src) ?? scene.textPlacement,
+    })),
+  };
 }
 
 function buildReelPrompt(
@@ -1867,7 +1896,8 @@ async function repairReelJsonForCopyGuard(
   badJson: string,
   userBrief: string,
   captionTone: HyperframesCaptionTone,
-  lockedSrcOrder?: string[]
+  lockedSrcOrder?: string[],
+  issueHint?: string
 ): Promise<string | null> {
   const orderBlock =
     lockedSrcOrder && lockedSrcOrder.length > 0
@@ -1888,10 +1918,11 @@ STRICT:
 - Keep "title" / "brandName" unless clearly broken.
 ${orderBlock || "- Keep src values valid and scene count stable."}
 - Remove banned phrases: in today's fast-paced world, revolutionary, game-changing, unlock, elevate, here's the thing, let's dive in, buckle up, the future of, curated
-- Remove weak stock phrasing: watchful in the, through the grass, emerging from the, eyes on the lens
+- Remove weak stock phrasing: watchful in the, through the grass, emerging from the, eyes on the lens, hidden in the grass, direct gaze, raw wild, vast scale, foreground focus
 - Avoid thin copy. Each scene needs enough substance to work on screen and in TTS.
 - Replace generic nature-documentary filler with concrete visual language tied to that exact frame. Prefer specific nouns, camera-framing details, posture, texture, weather, distance, or movement.
 - Tone: ${captionTone}
+${issueHint ? `- Fix this exact validation failure first: ${issueHint}` : ""}
 
 User brief: ${userBrief.slice(0, 600)}
 
@@ -3196,6 +3227,7 @@ export async function POST(req: NextRequest) {
 
         if (repairableReel) {
           send({ type: "status", text: "Repair pass · fixing scene copy/order before TTS/render…" });
+          const firstIssueHint = validation.ok ? undefined : validation.error;
           const repaired = roastLikeCopy
             ? await repairReelJsonForRoast(
                 JSON.stringify(parsed),
@@ -3206,7 +3238,8 @@ export async function POST(req: NextRequest) {
                 JSON.stringify(parsed),
                 userMessage,
                 creative.captionTone,
-                imageOrder
+                imageOrder,
+                firstIssueHint
               );
           if (repaired) {
             try {
@@ -3219,6 +3252,28 @@ export async function POST(req: NextRequest) {
             } catch {
               /* keep prior validation error */
             }
+
+            if (!validation.ok && /banned phrases|weak phrases|thin copy/i.test(validation.error) && !roastLikeCopy) {
+              const secondRepair = await repairReelJsonForCopyGuard(
+                JSON.stringify(parsed),
+                userMessage,
+                creative.captionTone,
+                imageOrder,
+                validation.error
+              );
+              if (secondRepair) {
+                try {
+                  parsed = JSON.parse(secondRepair);
+                  validation = validateReelSpec(parsed, validPaths, copyLimits, effectiveMaxScenes, {
+                    roastCopyCheck: roastLikeCopy,
+                    copyGuardTone: creative.captionTone,
+                    enforceImageOrder: imageOrder,
+                  });
+                } catch {
+                  /* keep prior validation error */
+                }
+              }
+            }
           }
         }
 
@@ -3226,7 +3281,7 @@ export async function POST(req: NextRequest) {
           send({ type: "error", content: `Schema error: ${validation.error}` });
           return;
         }
-        const spec = validation.spec;
+        const spec = applyVisionTextPlacement(validation.spec, visionNotes);
 
         const { sceneLen, transLen } = computeSceneTimingForTarget(
           targetDurationSec,

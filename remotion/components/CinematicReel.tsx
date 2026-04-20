@@ -56,6 +56,8 @@ export interface ReelScene {
   transition?: TransitionKind;
   /** Natural spoken narration for TTS — used by agent route, stripped before render. */
   narration?: string;
+  /** Vision-derived safe zone hint so captions avoid the subject. */
+  textPlacement?: "bottom-left" | "bottom-center" | "top-left" | "top-center" | "left-panel" | "right-panel" | "center";
 }
 
 export type ReelDecorStyle = "none" | "minimal" | "film";
@@ -201,6 +203,7 @@ interface ResolvedScene {
   transition: TransitionKind;
   burnFrom: Vec;
   burnTo: Vec;
+  textPlacement?: ReelScene["textPlacement"];
 }
 
 type SceneArchetype = "hero" | "detail" | "proof" | "quote" | "cta";
@@ -299,8 +302,100 @@ function resolveScenes(scenes: ReelScene[]): ResolvedScene[] {
       transition: s.transition ?? TRANSITION_CYCLE[(i - 1 + TRANSITION_CYCLE.length) % TRANSITION_CYCLE.length],
       burnFrom: burns.from,
       burnTo: burns.to,
+      textPlacement: s.textPlacement,
     };
   });
+}
+
+function applyTextPlacement(
+  layout: ReturnType<typeof sceneLayout>,
+  textPlacement: ReelScene["textPlacement"],
+  width: number,
+  height: number
+) {
+  if (!textPlacement) return layout;
+
+  switch (textPlacement) {
+    case "bottom-center":
+      return {
+        ...layout,
+        left: 0,
+        right: 0,
+        textAlign: "center" as const,
+        alignItems: "center" as const,
+        justify: "center" as const,
+      };
+    case "top-left":
+      return {
+        ...layout,
+        captionBottom: Math.round(height * 0.54),
+        kickerBottom: Math.round(height * 0.48),
+        barBottom: Math.round(height * 0.68),
+        left: Math.round(width * 0.08),
+        right: Math.round(width * 0.26),
+        textAlign: "left" as const,
+        alignItems: "flex-start" as const,
+        justify: "flex-start" as const,
+        bottomGradient:
+          "linear-gradient(to bottom, rgba(0,0,0,0.74) 0%, rgba(0,0,0,0.28) 22%, transparent 44%, rgba(0,0,0,0.08) 100%)",
+      };
+    case "top-center":
+      return {
+        ...layout,
+        captionBottom: Math.round(height * 0.54),
+        kickerBottom: Math.round(height * 0.48),
+        barBottom: Math.round(height * 0.68),
+        left: 0,
+        right: 0,
+        textAlign: "center" as const,
+        alignItems: "center" as const,
+        justify: "center" as const,
+        bottomGradient:
+          "linear-gradient(to bottom, rgba(0,0,0,0.76) 0%, rgba(0,0,0,0.3) 22%, transparent 44%, rgba(0,0,0,0.08) 100%)",
+      };
+    case "right-panel":
+      return {
+        ...layout,
+        left: Math.round(width * 0.46),
+        right: Math.round(width * 0.06),
+        textAlign: "left" as const,
+        alignItems: "flex-start" as const,
+        justify: "flex-end" as const,
+        maxCaptionWidth: Math.round(width * 0.42),
+        bottomGradient:
+          "linear-gradient(to left, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.48) 28%, transparent 58%), linear-gradient(to top, rgba(0,0,0,0.58) 0%, transparent 28%)",
+      };
+    case "left-panel":
+      return {
+        ...layout,
+        left: Math.round(width * 0.06),
+        right: Math.round(width * 0.46),
+        textAlign: "left" as const,
+        alignItems: "flex-start" as const,
+        justify: "flex-end" as const,
+        maxCaptionWidth: Math.round(width * 0.42),
+        bottomGradient:
+          "linear-gradient(to right, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.48) 28%, transparent 58%), linear-gradient(to top, rgba(0,0,0,0.58) 0%, transparent 28%)",
+      };
+    case "center":
+      return {
+        ...layout,
+        left: Math.round(width * 0.18),
+        right: Math.round(width * 0.18),
+        textAlign: "center" as const,
+        alignItems: "center" as const,
+        justify: "center" as const,
+        captionBottom: Math.round(height * 0.3),
+        kickerBottom: Math.round(height * 0.21),
+        barBottom: Math.round(height * 0.43),
+        maxCaptionWidth: Math.round(width * 0.64),
+        bottomGradient:
+          "radial-gradient(circle at center, rgba(0,0,0,0.68) 0%, rgba(0,0,0,0.22) 44%, rgba(0,0,0,0.14) 62%, transparent 78%)",
+      };
+    case "bottom-left":
+    default:
+      return layout;
+  }
 }
 
 // ─── Subcomponents ───────────────────────────────────────────────────────────
@@ -795,7 +890,12 @@ const SceneFrame: React.FC<{
   const ty = scene.burnFrom[2] + (scene.burnTo[2] - scene.burnFrom[2]) * t;
 
   const { width, height } = useVideoConfig();
-  const layout = sceneLayout(theme, sceneIndex, sceneCount, width, height);
+  const layout = applyTextPlacement(
+    sceneLayout(theme, sceneIndex, sceneCount, width, height),
+    scene.textPlacement,
+    width,
+    height
+  );
   const motion = motionWordProfile(motionFeel);
   const sceneAccent = accentForTheme(scene.accent, theme);
   const archetype = sceneArchetypeFor(theme, sceneIndex, sceneCount);
