@@ -1059,6 +1059,63 @@ function safeJson(raw: string): unknown | null {
   return null;
 }
 
+function normalizeGemmaJsonCandidate(input: string): string {
+  return input
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/,\s*([}\]])/g, "$1")
+    .replace(/[\u0000-\u0019]+/g, " ")
+    .trim();
+}
+
+function balancePossiblyTruncatedJson(input: string): string {
+  const normalized = normalizeGemmaJsonCandidate(input);
+  if (!normalized) return normalized;
+
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < normalized.length; i += 1) {
+    const ch = normalized[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      if (inString) escaped = true;
+      continue;
+    }
+    if (ch === "\"") {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "{" || ch === "[") {
+      stack.push(ch);
+      continue;
+    }
+    if (ch === "}" && stack[stack.length - 1] === "{") {
+      stack.pop();
+      continue;
+    }
+    if (ch === "]" && stack[stack.length - 1] === "[") {
+      stack.pop();
+    }
+  }
+
+  let repaired = normalized.replace(/,\s*$/g, "");
+  while (/[,\s]$/.test(repaired)) {
+    repaired = repaired.replace(/,\s*$/g, "").trimEnd();
+  }
+
+  for (let i = stack.length - 1; i >= 0; i -= 1) {
+    repaired += stack[i] === "{" ? "}" : "]";
+  }
+
+  return repaired;
+}
+
 function parseGemmaJsonObject(raw: string): { value: unknown | null; extracted: string | null; error?: string } {
   const extracted = extractJson(raw);
   if (!extracted) {
@@ -1067,11 +1124,8 @@ function parseGemmaJsonObject(raw: string): { value: unknown | null; extracted: 
 
   const candidates = [
     extracted,
-    extracted
-      .replace(/[\u2018\u2019]/g, "'")
-      .replace(/[\u201C\u201D]/g, '"')
-      .replace(/,\s*([}\]])/g, "$1")
-      .replace(/[\u0000-\u0019]+/g, " "),
+    normalizeGemmaJsonCandidate(extracted),
+    balancePossiblyTruncatedJson(extracted),
   ];
 
   for (const candidate of candidates) {
@@ -1212,6 +1266,8 @@ function buildReelPrompt(
 - caption ≤${captionMax} chars · kicker ≤${kickerMax} chars
 - Vary transitions scene-to-scene — no two in a row the same
 - Caption must reference what's IN that image (from subject/mood below) — never generic${intent.isRoast ? "\n- THIS IS A ROAST: every caption = specific funny observation about what's visible in THAT image" : ""}
+- Ban empty cinematic filler: never write lines like "untamed power", "raw intensity", "study in patience", "commanding the view", "pure focus", "emerging from the veil", or wildlife-documentary cliches that could fit any animal photo
+- Every caption or kicker must contain at least one concrete visual noun, texture, action, or environmental detail from that frame
 `;
   const remixBlock = buildReelRemixDirective(attachments.length, maxScenes, {
     oneScenePerImage,
@@ -1313,6 +1369,7 @@ ${imgList}
 - Caption + kicker MUST follow the CREATIVE DIRECTIVE caption tone above (hype vs corporate vs tutorial vs storytelling vs social).
 - ONE powerful word beats two when tone is hype/social and runtime is short; for longer runtimes, richer headlines are OK within caption char limit.
 - Kicker amplifies the caption (≤${kickerMax} chars) — poetic or punchy per tone; for corporate, a clean subtitle line.
+- Avoid brochure narration and nature-doc filler. Write like a premium editor or filmmaker reacting to THIS frame, not like stock-footage captioning.
 - Accent should match the photograph's dominant mood (use the palette hints above if helpful):
     action / fire    → #ff3d3d, #ff8a2a
     warmth / gold    → #ffd43a, #ffb72a
@@ -1345,10 +1402,12 @@ Now produce the JSON.
 function extractJson(response: string): string | null {
   const fenced = response.match(/```(?:json)?\s*\n([\s\S]*?)```/);
   if (fenced) return fenced[1].trim();
-  // fallback: first brace to matching close (greedy)
+  // fallback: first brace to matching close (greedy); if the model truncated the
+  // tail, still return the partial object so the salvage parser can repair it.
   const first = response.indexOf("{");
   const last = response.lastIndexOf("}");
   if (first >= 0 && last > first) return response.slice(first, last + 1);
+  if (first >= 0) return response.slice(first).trim();
   return null;
 }
 
