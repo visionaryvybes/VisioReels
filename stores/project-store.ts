@@ -6,16 +6,13 @@ export interface Project {
   name: string;
   composition: string | null;
   prompt: string;
-  platform: string;
   createdAt: number;
-  previewPath: string | null;
 }
 
 interface ProjectStore {
   current: Project;
   history: Project[];
   setName: (name: string) => void;
-  setPlatform: (platform: string) => void;
   setComposition: (comp: string, prompt: string, preview: string) => void;
   saveToHistory: () => void;
   loadProject: (id: string) => void;
@@ -29,9 +26,7 @@ function makeProject(): Project {
     name: 'Untitled Reel',
     composition: null,
     prompt: '',
-    platform: 'tiktok',
     createdAt: Date.now(),
-    previewPath: null,
   };
 }
 
@@ -44,16 +39,12 @@ export const useProjectStore = create<ProjectStore>()(
       setName: (name) =>
         set((s) => ({ current: { ...s.current, name } })),
 
-      setPlatform: (platform) =>
-        set((s) => ({ current: { ...s.current, platform } })),
-
-      setComposition: (comp, prompt, preview) =>
+      setComposition: (comp, prompt) =>
         set((s) => ({
           current: {
             ...s.current,
             composition: comp,
             prompt,
-            previewPath: preview,
           },
         })),
 

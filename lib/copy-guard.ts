@@ -39,6 +39,12 @@ const WEAK_PATTERNS = [
   "through the grass",
   "emerging from the",
   "eyes on the lens",
+  "hidden in the grass",
+  "direct gaze",
+  "raw. wild",
+  "raw, wild",
+  "vast scale",
+  "foreground focus",
 ] as const;
 
 export function normalizeText(text: string): string {

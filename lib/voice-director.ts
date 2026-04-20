@@ -35,11 +35,11 @@ export function buildVoiceDirection(opts: {
 
   // Map captionTone to primary voice delivery instruction
   const toneInstructs: Record<CaptionTone, string> = {
-    hype: "Speak with high energy and urgency. Short punchy sentences, crisp consonants. Each word lands with impact. Fast pace, upward inflection on key words. Think hype man, not announcer.",
-    corporate: "Speak clearly and confidently at a measured pace. Professional authority without stiffness. Each sentence is deliberate. Crisp, warm, trustworthy. No filler, no rush.",
-    tutorial: "Speak like a knowledgeable friend explaining something step by step. Slightly slower than natural speech. Clear enunciation. Pause briefly between steps. Friendly and approachable.",
-    storytelling: "Speak cinematically. Slower pace with deliberate pauses for effect. Vary your pace — slow on emotional beats, quicker on narrative momentum. Rich, warm tone. Breathe the story.",
-    social: "Conversational, authentic. Sounds like talking to a friend on camera — natural rhythm, occasional emphasis on surprising words. Not scripted. Relaxed but engaged.",
+    hype: "Speak with sharp confidence and clean rhythm. Short punchy sentences, crisp consonants, no sports-announcer exaggeration. Hit the opening hard, then stay controlled and modern.",
+    corporate: "Speak with premium clarity at a measured pace. Professional and warm, but never stiff, salesy, or generic. Every sentence should sound intentional and finished.",
+    tutorial: "Speak like a smart creator explaining something clearly on camera. Slightly slower than natural speech, with clean pacing and quick pauses between steps. Helpful, not robotic.",
+    storytelling: "Speak with cinematic restraint. Warm, textured, deliberate. Let key phrases breathe, but avoid melodrama and trailer-voice clichés. Think intimate documentary, not epic promo.",
+    social: "Conversational and camera-native. Natural rhythm, subtle emphasis, relaxed confidence. Sound like a real creator talking directly to the viewer, not reading scripted copy.",
   };
 
   // Motion feel adds a secondary layer of energy/pacing
@@ -61,7 +61,7 @@ export function buildVoiceDirection(opts: {
   let instruct = (toneInstructs[captionTone] + motionModifiers[motionFeel] + sceneRoleModifiers[sceneRole]).slice(0, 500);
   if (roastDelivery) {
     instruct =
-      ("Dry comedy roast. Side-eye energy, slightly deadpan; never corporate or motivational. " +
+      ("Dry comedy roast. Side-eye energy, slightly deadpan; never corporate, inspirational, or overperformed. " +
         instruct).slice(0, 500);
   }
 
@@ -104,7 +104,13 @@ export function buildNarrationText(opts: {
       .replace(/\bfollow for (more|part ?2|pt ?2)\b/gi, "")
       .replace(/\bmain character\b/gi, "centerpiece")
       .replace(/\bquiet luxury\b/gi, "restrained luxury")
+      .replace(/\ba moment of\b/gi, "")
+      .replace(/\bpure[, ]+wild passage\b/gi, "crossing")
+      .replace(/\braw[, ]+wild\b/gi, "untamed")
+      .replace(/\bzero distraction\b/gi, "nothing else in frame")
+      .replace(/\bdirect gaze\b/gi, "direct look")
       .replace(/\s{2,}/g, " ")
+      .replace(/\s+([,.;:!?])/g, "$1")
       .trim();
 
   // If Gemma wrote a dedicated narration, use it (already natural speech)

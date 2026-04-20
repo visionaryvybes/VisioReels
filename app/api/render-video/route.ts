@@ -151,21 +151,8 @@ export async function GET() {
   const rootPath = path.join(PROJECT_DIR, "remotion", "Root.tsx");
   try {
     const content = fs.readFileSync(rootPath, "utf-8");
-    // Static string ids: id="Foo" or id='Foo'
-    const staticIds = [...content.matchAll(/id=["']([^"']+)["']/g)].map((m) => m[1]);
-    // Dynamic SocialReel-<platform> ids from platforms.ts
-    const platformsPath = path.join(PROJECT_DIR, "lib", "platforms.ts");
-    let socialIds: string[] = [];
-    try {
-      const platformsContent = fs.readFileSync(platformsPath, "utf-8");
-      const platformsBlock = platformsContent.match(/export const PLATFORMS[^=]+=\s*\[([\s\S]*?)\];/)?.[1] ?? "";
-      const platformIds = [...platformsBlock.matchAll(/id:\s*["']([^"']+)["']/g)].map((m) => m[1]);
-      if (content.includes("SocialReel-") && platformIds.length) {
-        socialIds = platformIds.map((id) => `SocialReel-${id}`);
-      }
-    } catch { /* platforms.ts not found */ }
-    const all = [...new Set([...socialIds, ...staticIds])];
-    return NextResponse.json({ compositions: all });
+    const compositions = [...new Set([...content.matchAll(/id=["']([^"']+)["']/g)].map((m) => m[1]))];
+    return NextResponse.json({ compositions });
   } catch {
     return NextResponse.json({ compositions: [] });
   }

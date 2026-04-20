@@ -132,7 +132,7 @@ export async function resolveProfileForNarration(ttsVoice: string): Promise<Voic
   if (q) attempts.push(q);
 
   const fallbacks: PresetPick[] = [
-    { preset_engine: "kokoro", preset_voice_id: "af_heart" },
+    { preset_engine: "kokoro", preset_voice_id: "af_bella" },
     { preset_engine: "qwen_custom_voice", preset_voice_id: "Ryan" },
   ];
   for (const fb of fallbacks) {

@@ -234,7 +234,7 @@ const initialState = {
   concept: null as ConceptBrief | null,
   useTTS: false,
   ttsVoice: 'default',
-  ttsVoiceId: 'af_alloy',
+  ttsVoiceId: 'af_bella',
   ttsGender: 'female' as "female" | "male",
   ttsAccent: 'american',
   ttsPresetVoices: [] as PresetVoiceGroup[],

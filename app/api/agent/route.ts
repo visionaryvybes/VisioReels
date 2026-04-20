@@ -1890,6 +1890,7 @@ ${orderBlock || "- Keep src values valid and scene count stable."}
 - Remove banned phrases: in today's fast-paced world, revolutionary, game-changing, unlock, elevate, here's the thing, let's dive in, buckle up, the future of, curated
 - Remove weak stock phrasing: watchful in the, through the grass, emerging from the, eyes on the lens
 - Avoid thin copy. Each scene needs enough substance to work on screen and in TTS.
+- Replace generic nature-documentary filler with concrete visual language tied to that exact frame. Prefer specific nouns, camera-framing details, posture, texture, weather, distance, or movement.
 - Tone: ${captionTone}
 
 User brief: ${userBrief.slice(0, 600)}

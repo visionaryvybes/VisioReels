@@ -85,14 +85,14 @@ const STYLE_CHIPS = [
 ];
 
 const FEATURED_VOICE_STYLES: Record<string, { tag: string; note: string }> = {
-  af_bella: { tag: 'Creator', note: 'expressive, polished social read' },
-  af_heart: { tag: 'Soft', note: 'emotional, warm, intimate' },
-  af_alloy: { tag: 'Studio', note: 'clean explainer / product voice' },
-  af_nova: { tag: 'Modern', note: 'bright, crisp, premium app feel' },
-  am_onyx: { tag: 'Authority', note: 'deep premium narrator' },
+  af_bella: { tag: 'Recommended', note: 'polished creator voice with stronger social cadence' },
+  af_nova: { tag: 'Premium', note: 'bright, crisp, modern product-style read' },
+  af_heart: { tag: 'Warm', note: 'soft, intimate storytelling delivery' },
+  af_alloy: { tag: 'Studio', note: 'clean explainer / UI demo voice' },
+  am_onyx: { tag: 'Cinematic', note: 'deep premium narrator with weight' },
   am_michael: { tag: 'Natural', note: 'casual trusted storyteller' },
-  bm_george: { tag: 'Classic', note: 'British documentary tone' },
-  bm_fable: { tag: 'Story', note: 'measured audiobook cadence' },
+  bm_george: { tag: 'Classic', note: 'measured British documentary tone' },
+  bm_fable: { tag: 'Story', note: 'controlled long-form narration cadence' },
 };
 
 const ASPECT_ORDER: ReelAspect[] = ['9:16', '1:1', '4:5', '16:9'];
@@ -165,7 +165,7 @@ export function AIPanel() {
         if (d.presetVoices?.length) {
           setTTSPresetVoices(d.presetVoices);
         }
-        // If still at default and we got preset voices, keep ttsVoiceId as-is (already "af_alloy")
+        // If still at default and we got preset voices, keep ttsVoiceId as-is (already "af_bella")
         // Only fall back to a profile id if there are no preset voices
         if (d.profiles?.length && !d.presetVoices?.length && ttsVoice === 'default') {
           setTTSVoice(d.profiles[0].id);
@@ -380,7 +380,7 @@ export function AIPanel() {
 
   const visionByPath = new Map(visionNotes.map((n) => [n.path, n]));
 
-  const TYPO_IDS: ReelTypographyId[] = ['syne', 'brutal', 'editorial', 'swiss', 'mono', 'fraunces', 'quiet', 'zine'];
+  const TYPO_IDS: ReelTypographyId[] = ['syne', 'brutal', 'editorial', 'swiss', 'mono', 'fraunces', 'quiet', 'zine', 'luxe', 'signal'];
   const DECOR_IDS: ReelDecorId[] = ['none', 'minimal', 'film'];
 
   return (

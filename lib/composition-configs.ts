@@ -13,27 +13,20 @@ export const COMPOSITION_CONFIGS: Record<string, CompositionConfig> = {
   HtmlSlideVideo: { durationInFrames: 300, fps: 30, width: 1080, height: 1920 },
 };
 
-/** Map a composition ID to the file that exports the React component */
-function compIdToFilename(compId: string): string {
-  return compId;
-}
-
 /** Dynamically import a composition component by its ID */
 export async function loadCompositionComponent(
   compId: string
 ): Promise<ComponentType> {
-  const filename = compIdToFilename(compId);
-  
-  if (filename === 'Reel') {
+  if (compId === 'Reel') {
     return (await import('../remotion/compositions/Reel')).Reel as unknown as ComponentType;
   }
 
-  if (filename === 'HtmlSlideVideo') {
+  if (compId === 'HtmlSlideVideo') {
     return (await import('../remotion/compositions/HtmlSlideVideo')).HtmlSlideVideo as unknown as ComponentType;
   }
 
   // Unknown id → Gemma-generated file.
-  if (!/^[A-Za-z0-9_-]+$/.test(filename)) {
+  if (!/^[A-Za-z0-9_-]+$/.test(compId)) {
     throw new Error(`Unsafe composition id: ${compId}`);
   }
 
@@ -51,10 +44,10 @@ export async function loadCompositionComponent(
       const mod: Record<string, unknown> = await import(
         /* webpackInclude: /\.tsx$/ */
         /* webpackMode: "lazy" */
-        `../remotion/compositions/${filename}.tsx`
+        `../remotion/compositions/${compId}.tsx`
       );
-      const comp = (mod[filename] ?? mod.default) as ComponentType | undefined;
-      if (!comp) throw new Error(`Module loaded but missing export '${filename}'`);
+      const comp = (mod[compId] ?? mod.default) as ComponentType | undefined;
+      if (!comp) throw new Error(`Module loaded but missing export '${compId}'`);
       return comp;
     } catch (e) {
       lastErr = e as Error;

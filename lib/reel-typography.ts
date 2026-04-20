@@ -8,7 +8,9 @@ export type ReelTypographyId =
   | 'mono'
   | 'fraunces'
   | 'quiet'
-  | 'zine';
+  | 'zine'
+  | 'luxe'
+  | 'signal';
 
 export type ReelDecorId = 'none' | 'minimal' | 'film';
 export type ReelThemeId =
@@ -17,7 +19,9 @@ export type ReelThemeId =
   | 'editorial'
   | 'swiss'
   | 'terminal'
-  | 'manifesto';
+  | 'manifesto'
+  | 'luxe'
+  | 'signal';
 
 export const REEL_TYPOGRAPHY: Record<
   ReelTypographyId,
@@ -71,6 +75,18 @@ export const REEL_TYPOGRAPHY: Record<
     kickerFont: "var(--font-bricolage), system-ui, sans-serif",
     theme: 'brutal',
   },
+  luxe: {
+    label: 'LUXE',
+    captionFont: "var(--font-instrument-serif), Georgia, serif",
+    kickerFont: "var(--font-dm-sans), system-ui, sans-serif",
+    theme: 'luxe',
+  },
+  signal: {
+    label: 'SIGNAL',
+    captionFont: "var(--font-syne), 'Arial Black', system-ui, sans-serif",
+    kickerFont: "var(--font-dm-mono), 'Courier New', monospace",
+    theme: 'signal',
+  },
 };
 
 export const REEL_DECOR_LABELS: Record<ReelDecorId, string> = {
@@ -80,7 +96,7 @@ export const REEL_DECOR_LABELS: Record<ReelDecorId, string> = {
 };
 
 export function parseReelTypographyId(v: unknown): ReelTypographyId {
-  if (v === 'syne' || v === 'brutal' || v === 'editorial' || v === 'swiss' || v === 'mono' || v === 'fraunces' || v === 'quiet' || v === 'zine') {
+  if (v === 'syne' || v === 'brutal' || v === 'editorial' || v === 'swiss' || v === 'mono' || v === 'fraunces' || v === 'quiet' || v === 'zine' || v === 'luxe' || v === 'signal') {
     return v;
   }
   return 'syne';

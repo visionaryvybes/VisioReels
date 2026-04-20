@@ -70,6 +70,59 @@ const cameraVectors = [
   { fromScale: 1.1, toScale: 1.04, fromX: -1, toX: 1.1, fromY: 0.8, toY: -1.1 },
 ];
 
+const SlideAtmosphere: React.FC<{
+  motionFeel: NonNullable<HtmlSlideVideoProps["motionFeel"]>;
+}> = ({ motionFeel }) => {
+  const frame = useCurrentFrame();
+  const grainOpacity =
+    motionFeel === "dramatic" ? 0.12 : motionFeel === "dreamy" ? 0.06 : motionFeel === "snappy" ? 0.08 : 0.1;
+  const pulse = interpolate(frame % 45, [0, 22, 44], [0.12, 0.2, 0.12], {
+    extrapolateRight: "clamp",
+  });
+
+  return (
+    <>
+      <AbsoluteFill
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.02) 28%, rgba(0,0,0,0.38) 100%)",
+          pointerEvents: "none",
+        }}
+      />
+      <AbsoluteFill
+        style={{
+          background:
+            motionFeel === "dreamy"
+              ? "radial-gradient(circle at 20% 18%, rgba(255,224,178,0.18), transparent 34%), radial-gradient(circle at 82% 78%, rgba(141,214,255,0.14), transparent 36%)"
+              : "radial-gradient(circle at 18% 18%, rgba(255,255,255,0.12), transparent 28%), radial-gradient(circle at 82% 82%, rgba(255,255,255,0.08), transparent 26%)",
+          mixBlendMode: "screen",
+          opacity: pulse,
+          pointerEvents: "none",
+        }}
+      />
+      <AbsoluteFill
+        style={{
+          inset: "3.5%",
+          border: "1px solid rgba(255,255,255,0.12)",
+          boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.04)",
+          pointerEvents: "none",
+        }}
+      />
+      <AbsoluteFill
+        style={{
+          opacity: grainOpacity,
+          mixBlendMode: "overlay",
+          backgroundImage:
+            "radial-gradient(rgba(255,255,255,0.6) 0.5px, transparent 0.8px), radial-gradient(rgba(255,255,255,0.22) 0.4px, transparent 0.8px)",
+          backgroundPosition: "0 0, 12px 11px",
+          backgroundSize: "14px 14px, 17px 17px",
+          pointerEvents: "none",
+        }}
+      />
+    </>
+  );
+};
+
 const SlideStill: React.FC<{
   src: string;
   index: number;
@@ -141,6 +194,7 @@ const SlideStill: React.FC<{
           mixBlendMode: "screen",
         }}
       />
+      <SlideAtmosphere motionFeel={motionFeel} />
     </AbsoluteFill>
   );
 };

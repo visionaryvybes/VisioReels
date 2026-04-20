@@ -204,28 +204,88 @@ interface ResolvedScene {
 }
 
 type SceneArchetype = "hero" | "detail" | "proof" | "quote" | "cta";
+type BarMode = "horizontal" | "vertical" | "none";
 
 /** Keeps single-word headlines from clipping — scales down until the longest word fits. */
 function fitCaptionFontSize(
-  words: string[],
+  lines: string[],
   width: number,
-  height: number
+  height: number,
+  theme: ReelThemeId,
+  lineCount: number
 ): number {
   const maxCaptionWidth = Math.round(width * 0.88);
-  const baseFont = Math.round(height * 0.052);
+  const baseFont =
+    theme === "editorial" || theme === "luxe"
+      ? Math.round(height * 0.045)
+      : theme === "signal"
+        ? Math.round(height * 0.049)
+        : Math.round(height * 0.052);
   const longest =
-    words.length === 0
+    lines.length === 0
       ? "A"
-      : words.reduce((a, b) => (a.length >= b.length ? a : b), words[0]);
+      : lines.reduce((a, b) => (a.length >= b.length ? a : b), lines[0]);
   const len = Math.max(1, longest.length);
-  const maxLs = 10;
+  const maxLs = theme === "editorial" || theme === "luxe" ? 2 : 7;
   let fontSize = baseFont;
   for (let step = 0; step < 120; step++) {
     const estWordW = len * fontSize * 0.58 + Math.max(0, len - 1) * maxLs;
     if (estWordW <= maxCaptionWidth * 0.9) break;
     fontSize -= 1;
   }
+  if (lineCount >= 4) fontSize -= 6;
+  if (lineCount >= 5) fontSize -= 6;
   return Math.max(12, Math.min(baseFont, fontSize));
+}
+
+function buildCaptionLines(caption: string, theme: ReelThemeId): string[] {
+  const words = caption.split(/\s+/).filter(Boolean);
+  if (words.length <= 2) return [caption.trim()];
+
+  const maxCharsByTheme: Record<ReelThemeId, number> = {
+    impact: 15,
+    brutal: 14,
+    editorial: 17,
+    swiss: 18,
+    terminal: 20,
+    manifesto: 18,
+    luxe: 18,
+    signal: 16,
+  };
+  const maxLinesByTheme: Record<ReelThemeId, number> = {
+    impact: 4,
+    brutal: 4,
+    editorial: 3,
+    swiss: 3,
+    terminal: 3,
+    manifesto: 3,
+    luxe: 3,
+    signal: 4,
+  };
+
+  const maxChars = maxCharsByTheme[theme] ?? 16;
+  const maxLines = maxLinesByTheme[theme] ?? 4;
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length <= maxChars || current.length === 0) {
+      current = candidate;
+      continue;
+    }
+    lines.push(current);
+    current = word;
+  }
+  if (current) lines.push(current);
+
+  while (lines.length > maxLines) {
+    const tail = lines.pop();
+    if (!tail || lines.length === 0) break;
+    lines[lines.length - 1] = `${lines[lines.length - 1]} ${tail}`;
+  }
+
+  return lines;
 }
 
 function resolveScenes(scenes: ReelScene[]): ResolvedScene[] {
@@ -460,6 +520,8 @@ function transitionTimingConfig(
 function accentForTheme(accent: string, theme: ReelThemeId): string {
   if (theme === "editorial") return `${accent}aa`;
   if (theme === "terminal") return `${accent}dd`;
+  if (theme === "luxe") return `${accent}99`;
+  if (theme === "signal") return `${accent}ee`;
   return accent;
 }
 
@@ -487,7 +549,7 @@ function sceneLayout(
     stroke: "0.5px rgba(255,255,255,0.85)",
     uppercase: true,
     kickerWrap: true,
-    barMode: "horizontal" as const,
+    barMode: "horizontal" as BarMode,
     barLeft: "8%",
     barWidthPct: 84,
     vignetteOpacity: 0.7,
@@ -507,14 +569,14 @@ function sceneLayout(
         paddingX: 0,
         captionBottom: isFirst ? Math.round(height * 0.14) : Math.round(height * 0.2),
         kickerBottom: Math.round(height * 0.09),
-        maxCaptionWidth: Math.round(width * 0.68),
+        maxCaptionWidth: Math.round(width * 0.58),
         stroke: "0px transparent",
         uppercase: false,
-        barMode: "vertical" as const,
+        barMode: "none" as BarMode,
         barLeft: `${Math.round(width * 0.08)}px`,
         barWidthPct: 0,
         bottomGradient:
-          "linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.42) 26%, transparent 62%)",
+          "linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.52) 24%, rgba(0,0,0,0.12) 46%, transparent 62%)",
       };
     case "brutal":
       return {
@@ -584,6 +646,46 @@ function sceneLayout(
         bottomGradient:
           "linear-gradient(to top, rgba(0,0,0,0.96) 0%, rgba(0,0,0,0.52) 24%, transparent 60%)",
       };
+    case "luxe":
+      return {
+        ...base,
+        justify: "flex-end" as const,
+        alignItems: "flex-start" as const,
+        textAlign: "left" as const,
+        left: Math.round(width * 0.1),
+        right: Math.round(width * 0.16),
+        captionBottom: Math.round(height * 0.14),
+        kickerBottom: Math.round(height * 0.085),
+        barBottom: Math.round(height * 0.24),
+        maxCaptionWidth: Math.round(width * 0.7),
+        stroke: "0px transparent",
+        uppercase: false,
+        barMode: "horizontal" as const,
+        barLeft: "10%",
+        barWidthPct: 38,
+        vignetteOpacity: 0.84,
+        bottomGradient:
+          "linear-gradient(to top, rgba(8,7,10,0.97) 0%, rgba(8,7,10,0.78) 22%, rgba(8,7,10,0.26) 48%, transparent 68%)",
+      };
+    case "signal":
+      return {
+        ...base,
+        justify: "flex-end" as const,
+        alignItems: "flex-start" as const,
+        textAlign: "left" as const,
+        left: Math.round(width * 0.06),
+        right: Math.round(width * 0.08),
+        captionBottom: Math.round(height * 0.18),
+        kickerBottom: Math.round(height * 0.09),
+        barBottom: Math.round(height * 0.31),
+        maxCaptionWidth: Math.round(width * 0.84),
+        stroke: "0px transparent",
+        barMode: "horizontal" as const,
+        barLeft: "6%",
+        barWidthPct: 76,
+        bottomGradient:
+          "linear-gradient(to top, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.82) 26%, rgba(0,0,0,0.28) 56%, transparent 74%)",
+      };
     case "impact":
     default:
       return base;
@@ -600,7 +702,13 @@ function sceneArchetypeFor(
   if (isFirst) return "hero";
   if (isLast) return "cta";
   if (theme === "editorial" || theme === "manifesto") {
-    return sceneIndex % 3 === 0 ? "quote" : "detail";
+    return sceneIndex % 2 === 0 ? "detail" : "hero";
+  }
+  if (theme === "luxe") {
+    return sceneIndex % 2 === 0 ? "hero" : "detail";
+  }
+  if (theme === "signal") {
+    return sceneIndex % 2 === 0 ? "proof" : "detail";
   }
   if (theme === "swiss" || theme === "terminal") {
     return sceneIndex % 2 === 0 ? "proof" : "detail";
@@ -693,15 +801,17 @@ const SceneFrame: React.FC<{
   const archetype = sceneArchetypeFor(theme, sceneIndex, sceneCount);
   const imageTreatment = imageStyleForArchetype(archetype, frame, sceneLen);
 
-  const rawWords = scene.caption.split(/\s+/).filter(Boolean);
-  const words = rawWords.length ? rawWords : [scene.caption];
+  const captionLines = buildCaptionLines(scene.caption, theme);
   const kickerSlide = useSpringAnim(4, 40, 0, 18);
   const kickerOpacity = useSpringAnim(4, 0, 1, 18);
 
   // All sizes + positions scale with height so they work across 9:16, 1:1, 4:5, 16:9.
-  const fontSize = fitCaptionFontSize(words, width, height);
-  const letterSpacingMax = Math.min(10, Math.max(4, Math.round(fontSize * 0.14)));
-  const letterSpacing = interpolate(frame, [0, sceneLen], [4, letterSpacingMax], {
+  const fontSize = fitCaptionFontSize(captionLines, layout.maxCaptionWidth, height, theme, captionLines.length);
+  const letterSpacingMax = Math.min(
+    theme === "editorial" || theme === "luxe" ? 4 : 8,
+    Math.max(theme === "editorial" || theme === "luxe" ? 1 : 3, Math.round(fontSize * 0.1))
+  );
+  const letterSpacing = interpolate(frame, [0, sceneLen], [theme === "editorial" || theme === "luxe" ? 1 : 3, letterSpacingMax], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: Easing.out(Easing.cubic),
@@ -785,18 +895,53 @@ const SceneFrame: React.FC<{
         </div>
       ) : null}
 
+      {theme === "signal" ? (
+        <div
+          style={{
+            position: "absolute",
+            top: "7%",
+            left: "6%",
+            padding: "8px 12px",
+            border: `1px solid ${sceneAccent}`,
+            background: "rgba(0,0,0,0.44)",
+            color: "#fff",
+            fontFamily: kickerFontFamily,
+            fontSize: 11,
+            letterSpacing: 2,
+            textTransform: "uppercase",
+            zIndex: 6,
+            boxShadow: `0 0 22px ${sceneAccent}40`,
+          }}
+        >
+          Cut {String(sceneIndex + 1).padStart(2, "0")}
+        </div>
+      ) : null}
+
+      {theme === "luxe" ? (
+        <div
+          style={{
+            position: "absolute",
+            inset: "6%",
+            border: "1px solid rgba(255,255,255,0.1)",
+            zIndex: 3,
+            pointerEvents: "none",
+          }}
+        />
+      ) : null}
+
       {archetype === "quote" ? (
         <div
           style={{
             position: "absolute",
-            left: "8%",
-            right: "8%",
-            top: "15%",
-            bottom: "18%",
-            border: "1px solid rgba(255,255,255,0.18)",
-            background: "linear-gradient(to bottom, rgba(0,0,0,0.36), rgba(0,0,0,0.56))",
-            backdropFilter: "blur(12px)",
+            left: "9%",
+            right: "14%",
+            top: "18%",
+            bottom: "28%",
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "linear-gradient(to bottom, rgba(0,0,0,0.18), rgba(0,0,0,0.3))",
+            backdropFilter: "blur(6px)",
             zIndex: 4,
+            borderRadius: 24,
           }}
         />
       ) : null}
@@ -832,7 +977,7 @@ const SceneFrame: React.FC<{
             borderRadius: 999,
           }}
         />
-      ) : (
+      ) : layout.barMode === "horizontal" ? (
         <div
           style={{
             position: "absolute",
@@ -845,7 +990,7 @@ const SceneFrame: React.FC<{
             borderRadius: 2,
           }}
         />
-      )}
+      ) : null}
 
       {/* Caption */}
       {archetype === "quote" ? (
@@ -891,10 +1036,10 @@ const SceneFrame: React.FC<{
             left: layout.left,
             right: layout.right,
             display: "flex",
-            flexWrap: "wrap",
+            flexDirection: "column",
             justifyContent: layout.justify,
             alignItems: layout.alignItems,
-            gap: layout.wordGap,
+            gap: Math.max(4, Math.round(height * 0.004)),
             padding: `0 ${layout.paddingX}px`,
             maxWidth: layout.maxCaptionWidth,
             width: layout.left === 0 && layout.right === 0 ? "100%" : undefined,
@@ -904,11 +1049,11 @@ const SceneFrame: React.FC<{
             zIndex: 6,
           }}
         >
-          {words.map((word, i) => {
-            const wordStart = motion.start + i * motion.stagger;
-            const wordY = interpolate(
+          {captionLines.map((line, i) => {
+            const lineStart = motion.start + i * (motion.stagger + 2);
+            const lineY = interpolate(
               frame,
-              [wordStart, wordStart + 18],
+              [lineStart, lineStart + 18],
               [motion.travel, 0],
               {
                 extrapolateLeft: "clamp",
@@ -921,9 +1066,9 @@ const SceneFrame: React.FC<{
                       : Easing.out(Easing.cubic),
               }
             );
-            const wordOp = interpolate(
+            const lineOp = interpolate(
               frame,
-              [wordStart, wordStart + 14],
+              [lineStart, lineStart + 14],
               [0, 1],
               {
                 extrapolateLeft: "clamp",
@@ -934,29 +1079,31 @@ const SceneFrame: React.FC<{
               <span
                 key={i}
                 style={{
-                  display: "inline-block",
+                  display: "block",
                   fontSize: archetype === "cta" ? Math.round(fontSize * 0.92) : fontSize,
                   fontWeight: archetype === "detail" ? 800 : 900,
                   color: "#fff",
                   letterSpacing,
                   textTransform: layout.uppercase ? "uppercase" : "none",
                   fontFamily: captionFontFamily,
-                  lineHeight: 1.05,
+                  lineHeight: theme === "editorial" || theme === "luxe" ? 0.96 : 1.02,
                   maxWidth: "100%",
-                  wordBreak: "break-word",
+                  whiteSpace: "nowrap",
                   textShadow:
                     theme === "terminal"
                       ? `0 0 14px ${sceneAccent}, 0 0 2px rgba(255,255,255,0.6)`
+                      : theme === "luxe"
+                        ? `0 8px 30px rgba(0,0,0,0.88), 0 0 1px rgba(255,255,255,0.35)`
                       : `0 4px 20px rgba(0,0,0,0.9), 0 0 2px ${sceneAccent}`,
                   transform:
                     archetype === "proof"
-                      ? `translateY(${wordY}px) translateX(${interpolate(frame, [wordStart, wordStart + 18], [-8, 0], { extrapolateRight: "clamp" })}px)`
-                      : `translateY(${wordY}px)`,
-                  opacity: wordOp,
+                      ? `translateY(${lineY}px) translateX(${interpolate(frame, [lineStart, lineStart + 18], [-8, 0], { extrapolateRight: "clamp" })}px)`
+                      : `translateY(${lineY}px)`,
+                  opacity: lineOp,
                   WebkitTextStroke: layout.stroke,
                 }}
               >
-                {word}
+                {line}
               </span>
             );
           })}
@@ -983,9 +1130,14 @@ const SceneFrame: React.FC<{
           <span
             style={{
               fontSize: Math.round(height * 0.018),
-              fontWeight: 600,
-              color: sceneAccent,
-              letterSpacing: theme === "editorial" ? 2 : 4,
+              fontWeight: theme === "luxe" ? 500 : 600,
+              color:
+                theme === "editorial" || theme === "luxe"
+                  ? "rgba(255,255,255,0.82)"
+                  : theme === "signal"
+                    ? "rgba(255,255,255,0.76)"
+                    : sceneAccent,
+              letterSpacing: theme === "editorial" || theme === "luxe" ? 2 : 4,
               textTransform: "uppercase",
               fontFamily: kickerFontFamily,
               textShadow: "0 2px 8px rgba(0,0,0,0.9)",
@@ -995,7 +1147,7 @@ const SceneFrame: React.FC<{
               lineHeight: 1.35,
             }}
           >
-            {theme === "editorial" ? scene.kicker : `◆ ${scene.kicker} ◆`}
+            {theme === "editorial" || theme === "luxe" ? scene.kicker : `◆ ${scene.kicker} ◆`}
           </span>
         </div>
       ) : null}
@@ -1035,7 +1187,7 @@ const Chrome: React.FC<{
   const barHeight = interpolate(
     frame,
     [0, 18, durationInFrames - 18, durationInFrames],
-    [0, 90, 90, 0],
+    [0, 28, 28, 0],
     {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
@@ -1088,8 +1240,8 @@ const Chrome: React.FC<{
           top: barHeight + 36,
           left: 40,
           right: 40,
-          height: 2,
-          background: "rgba(255,255,255,0.15)",
+          height: 1,
+          background: "rgba(255,255,255,0.08)",
           zIndex: 101,
           borderRadius: 1,
         }}
@@ -1100,7 +1252,7 @@ const Chrome: React.FC<{
             height: "100%",
             background: "#fff",
             borderRadius: 1,
-            boxShadow: "0 0 8px rgba(255,255,255,0.5)",
+            boxShadow: "0 0 6px rgba(255,255,255,0.35)",
           }}
         />
       </div>
@@ -1111,10 +1263,10 @@ const Chrome: React.FC<{
           top: barHeight + 66,
           left: 40,
           zIndex: 101,
-          fontSize: 22,
+          fontSize: 18,
           fontWeight: 800,
-          letterSpacing: 6,
-          color: "#fff",
+          letterSpacing: 4,
+          color: "rgba(255,255,255,0.92)",
           fontFamily: "var(--font-syne), system-ui, sans-serif",
           textShadow: "0 2px 6px rgba(0,0,0,0.8)",
           opacity: fadeIn,
@@ -1136,10 +1288,10 @@ const Chrome: React.FC<{
           top: barHeight + 66,
           right: 40,
           zIndex: 101,
-          fontSize: 22,
+          fontSize: 18,
           fontWeight: 700,
-          letterSpacing: 4,
-          color: "rgba(255,255,255,0.85)",
+          letterSpacing: 3,
+          color: "rgba(255,255,255,0.72)",
           fontFamily: "var(--font-dm-mono), monospace",
           textShadow: "0 2px 6px rgba(0,0,0,0.8)",
           opacity: fadeIn,
