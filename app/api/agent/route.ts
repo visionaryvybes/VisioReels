@@ -721,6 +721,25 @@ Scene holds will be tuned to fill this length. Write copy that earns the full ru
 - ${longForm ? `LONG RUN (${targetDurationSec}s): use the full kicker budget (≤${kickerMax} chars) for story beats, curiosity, payoff; vary phrasing scene-to-scene.` : `Short run: captions stay razor-tight; kicker optional.`}
 `;
 
+  // Narrative arc — from video-use production methodology.
+  // Map caption tone to the correct arc shape so every reel has story structure.
+  const narrativeArcMap: Record<string, string> = {
+    hype:         "HOOK → TENSION → REVEAL → PAYOFF → CTA",
+    social:       "HOOK → PROOF → MOMENT → CTA",
+    corporate:    "PROBLEM → SOLUTION → BENEFIT → EXAMPLE → CTA",
+    tutorial:     "INTRO → STEP 1 → STEP 2 → RESULT → CTA",
+    storytelling: "INCITING MOMENT → RISING ACTION → CLIMAX → RESOLUTION → CTA",
+  };
+  const arc = narrativeArcMap[creative.captionTone ?? "social"] ?? "HOOK → PROOF → PAYOFF → CTA";
+  const narrativeBlock = `═══ NARRATIVE ARC (mandatory — every reel needs story structure) ═══
+Arc for this tone (${creative.captionTone}): ${arc}
+- Scene 1 = HOOK: stop-the-scroll. Most visually arresting image. Shortest caption. No context yet.
+- Middle scenes = BUILD: proof, conflict, transformation, the "how" or "why"
+- Last scene = PAYOFF/CTA: resolution or call to action. Caption feels earned by what came before.
+- Each scene's copy must feel like the NEXT LINE in a conversation — not a random thought.
+Distribute your scenes across this arc. Don't make every scene feel the same.
+`;
+
   // Director brief block — pre-planned copy from the brain pass. When present,
   // Gemma must use the EXACT headline/kicker/accent per scene index (not invent new).
   const directorBlock = brief?.scenes.length
@@ -739,6 +758,7 @@ Pace: ${pace.toUpperCase()} — ${paceMeta.blurb}.
 ${creativeBlock}
 ${culturalBlock}
 
+${narrativeBlock}
 ${colorBlock}
 ${criticalRules}
 ${remixBlock}
@@ -1048,6 +1068,17 @@ cinematic-zoom · chromatic-split · glitch · swirl-vortex · thermal-distortio
 
 ${slideCulturalBlock}
 
+═══ NARRATIVE ARC — every deck needs story structure ═══
+${{
+    hype:         "HOOK → TENSION → REVEAL → PAYOFF → CTA",
+    social:       "HOOK → PROOF → MOMENT → CTA",
+    corporate:    "PROBLEM → SOLUTION → BENEFIT → EXAMPLE → CTA",
+    tutorial:     "INTRO → STEP 1 → STEP 2 → RESULT → CTA",
+    storytelling: "INCITING MOMENT → RISING → CLIMAX → RESOLUTION → CTA",
+  }[creative.captionTone ?? "social"] ?? "HOOK → PROOF → PAYOFF → CTA"}
+Slide 1 = HOOK (stop-scroll, no context dump). Last slide = payoff/CTA. Middle = build.
+Each slide's copy is the next line in the same story — not a disconnected random thought.
+
 CREATIVE DIRECTIVE:
 - Motion feel: ${creative.motionFeel}
 - Caption / copy tone: ${creative.captionTone}
@@ -1144,7 +1175,7 @@ function renderReelComponent(
   spec: ReelSpec,
   sceneLen: number,
   transLen: number,
-  opts: { captionFont: string; kickerFont: string; decor: ReelDecorId; sceneTTSPaths?: string[] }
+  opts: { captionFont: string; kickerFont: string; decor: ReelDecorId; sceneTTSPaths?: string[]; gradePreset?: string }
 ): string {
   const json = JSON.stringify(spec.scenes, null, 2);
   const indentedJson = json
@@ -1155,6 +1186,7 @@ function renderReelComponent(
   const cap = JSON.stringify(opts.captionFont);
   const kick = JSON.stringify(opts.kickerFont);
   const decor = JSON.stringify(opts.decor);
+  const grade = JSON.stringify(opts.gradePreset ?? "neutral_punch");
   const ttsPathsJson = opts.sceneTTSPaths?.some((p) => p)
     ? JSON.stringify(opts.sceneTTSPaths)
     : null;
@@ -1170,6 +1202,7 @@ export const ${componentName}: React.FC = () => {
       captionFontFamily={${cap}}
       kickerFontFamily={${kick}}
       decorStyle={${decor}}
+      gradePreset={${grade}}
       sceneLengthInFrames={${sceneLen}}
       transitionLengthInFrames={${transLen}}
       scenes={${indentedJson}}
@@ -1546,6 +1579,18 @@ export async function POST(req: NextRequest) {
   }
   const reelTypography: ReelTypographyId = parseReelTypographyId(body.reelTypography);
   const reelDecor: ReelDecorId = parseReelDecorId(body.reelDecor);
+
+  // Auto-pick grade preset from motion feel — cinematic/dramatic gets warm grade,
+  // snappy/hype gets neutral punch, dreamy gets matte film, corporate/calm gets subtle.
+  const gradePresetMap: Record<string, string> = {
+    smooth: "neutral_punch",
+    snappy: "neutral_punch",
+    bouncy: "warm_cinematic",
+    dramatic: "warm_cinematic",
+    dreamy: "matte_film",
+  };
+  const creative0 = parseCreativeProfile(body);
+  const autoGradePreset = gradePresetMap[creative0.motionFeel] ?? "neutral_punch";
   const aspect: Aspect =
     body.aspect === "1:1" || body.aspect === "4:5" || body.aspect === "16:9" || body.aspect === "9:16"
       ? body.aspect
@@ -1910,6 +1955,7 @@ export async function POST(req: NextRequest) {
           kickerFont: typo.kickerFont,
           decor: reelDecor,
           sceneTTSPaths: sceneTTSPaths.length > 0 ? sceneTTSPaths : undefined,
+          gradePreset: autoGradePreset,
         });
         send({ type: "status", text: `Writing ${outPath}…` });
         fs.mkdirSync(path.dirname(fullOut), { recursive: true });

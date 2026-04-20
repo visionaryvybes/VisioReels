@@ -59,6 +59,35 @@ export interface ReelScene {
 
 export type ReelDecorStyle = "none" | "minimal" | "film";
 
+/**
+ * Visual grade presets — CSS filter chains translated from video-use grade.py.
+ * Applied to each image for consistent cinematic treatment across the reel.
+ *
+ * "warm_cinematic"  — +12% contrast, crushed blacks, -12% sat, warm shadows/cool highs. Great for moody/editorial.
+ * "neutral_punch"   — +6% contrast, subtle s-curve. Safe all-purpose grade.
+ * "cool_editorial"  — desaturated, cool/blue shift. Architecture, tech, minimal.
+ * "matte_film"      — lifted blacks (matte look), +15% contrast, -25% sat. Film poster feel.
+ * "subtle"          — barely perceptible cleanup. Almost-none baseline.
+ * "none"            — no filter applied (raw image).
+ */
+export type GradePreset =
+  | "warm_cinematic"
+  | "neutral_punch"
+  | "cool_editorial"
+  | "matte_film"
+  | "subtle"
+  | "none";
+
+/** CSS filter string for each grade preset. */
+export const GRADE_FILTERS: Record<GradePreset, string> = {
+  warm_cinematic:  "contrast(1.12) brightness(0.98) saturate(0.88) sepia(0.10) hue-rotate(3deg)",
+  neutral_punch:   "contrast(1.06) saturate(1.02)",
+  cool_editorial:  "contrast(1.08) brightness(1.02) saturate(0.80) hue-rotate(-6deg)",
+  matte_film:      "contrast(1.15) brightness(0.96) saturate(0.75) sepia(0.12)",
+  subtle:          "contrast(1.03) saturate(0.98)",
+  none:            "",
+};
+
 export interface CinematicReelProps {
   scenes: ReelScene[];
   brandName?: string;
@@ -75,6 +104,8 @@ export interface CinematicReelProps {
   /** Optional per-scene TTS audio paths (public-relative, e.g. "tts/scene-0.wav").
    *  When provided, the audio file at index i plays once at the start of scene i. */
   sceneTTSPaths?: string[];
+  /** Visual color grade applied to every image. Default "neutral_punch". */
+  gradePreset?: GradePreset;
 }
 
 // ─── Duration math (exported for calculateMetadata) ──────────────────────────
@@ -393,12 +424,14 @@ const SceneFrame: React.FC<{
   captionFontFamily: string;
   kickerFontFamily: string;
   decorStyle: ReelDecorStyle;
+  gradeFilter?: string;
 }> = ({
   scene,
   sceneLen,
   captionFontFamily,
   kickerFontFamily,
   decorStyle,
+  gradeFilter = "",
 }) => {
   const frame = useCurrentFrame();
 
@@ -455,7 +488,7 @@ const SceneFrame: React.FC<{
         />
       </AbsoluteFill>
 
-      {/* Hero image — full-bleed cover + Ken Burns */}
+      {/* Hero image — full-bleed cover + Ken Burns + grade preset */}
       <AbsoluteFill
         style={{
           transform: `scale(${scale}) translate(${tx}%, ${ty}%)`,
@@ -468,7 +501,7 @@ const SceneFrame: React.FC<{
             width: "100%",
             height: "100%",
             objectFit: "cover",
-            filter: "contrast(1.12) saturate(1.15) brightness(1.02)",
+            filter: gradeFilter || "contrast(1.06) saturate(1.02)",
           }}
         />
       </AbsoluteFill>
@@ -821,7 +854,9 @@ export const CinematicReel: React.FC<CinematicReelProps> = ({
   sceneLengthInFrames = 75,
   transitionLengthInFrames = 18,
   sceneTTSPaths,
+  gradePreset = "neutral_punch",
 }) => {
+  const gradeFilter = GRADE_FILTERS[gradePreset] ?? "";
   // All hooks must be called unconditionally before any early return.
   const { width: vw, height: vh } = useVideoConfig();
 
@@ -885,6 +920,7 @@ export const CinematicReel: React.FC<CinematicReelProps> = ({
                 captionFontFamily={captionFontFamily}
                 kickerFontFamily={kickerFontFamily}
                 decorStyle={decorStyle}
+                gradeFilter={gradeFilter}
               />
               {sceneTTSPaths?.[i] ? (
                 <Audio
