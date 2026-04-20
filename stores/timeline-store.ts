@@ -14,7 +14,7 @@ interface TimelineStore {
   currentFrame: number;
   isPlaying: boolean;
   selectedClipId: string | null;
-  addClip: (clip: Omit<TimelineClip, 'id'>) => void;
+  addClip: (clip: Omit<TimelineClip, 'id' | 'color'>) => void;
   setCurrentFrame: (f: number) => void;
   setPlaying: (p: boolean) => void;
   setSelected: (id: string | null) => void;
@@ -42,7 +42,8 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
       const existing = s.clips.findIndex((c) => c.composition === clip.composition);
       if (existing !== -1) {
         const updated = [...s.clips];
-        updated[existing] = { ...clip, id: updated[existing].id, color: updated[existing].color };
+        // Preserve id + color; update duration/fps/label from new data
+        updated[existing] = { ...updated[existing], ...clip };
         return { clips: updated };
       }
       return { clips: [...s.clips, { ...clip, id, color }] };

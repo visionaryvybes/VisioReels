@@ -445,7 +445,10 @@ Static compositions in `remotion/compositions/` — registered in `remotion/Root
 
 ### Ollama helpers
 - `streamOllama()` — streaming with 120s timeout + AbortController
-- `callOllamaChat()` — non-streaming JSON calls (60s timeout)
+- `callOllamaChat(messages, jsonMode, overrides?)` — non-streaming JSON calls
+  - Default timeout: 60s (`CHAT_TIMEOUT_MS`). Vision calls use `VISION_TIMEOUT_MS` (150s).
+  - `overrides: { temperature?, num_predict?, num_ctx?, timeoutMs? }` — pass per-call overrides
+  - Vision calls pass `{ num_predict: m*800, num_ctx: 8192, timeoutMs: VISION_TIMEOUT_MS }` to avoid truncation
   - **IMPORTANT**: Never pass `think: false` AND `format: "json"` simultaneously (Ollama bug #15260 — JSON format is silently ignored). Use `format: "json"` alone.
 - `safeJson()` — strips `<think>…</think>` blocks and ` ```json ``` ` fences before parsing
 
@@ -524,7 +527,6 @@ The agent streams Server-Sent Events back to the client:
 ### High priority
 - [ ] **Web search quality**: Add `BRAVE_SEARCH_API_KEY` to `.env.local` for live cultural context (Reddit public JSON already wired, Brave optional)
 - [ ] **HyperFrames audio**: Verify Voicebox narration paths reach Remotion player in preview (audio exists in render, needs player check)
-- [ ] **Timeline population**: `addClip()` is called but timeline never shows clips in UI — investigate `timeline-store.ts` → `Timeline.tsx` binding
 
 ### Medium priority
 - [ ] **Generation quality for roast**: Test with 8-image roast brief post-fix — `detectCreativeIntent` + repair pass should now handle it
@@ -551,11 +553,18 @@ The agent streams Server-Sent Events back to the client:
 |-----|--------|-------|
 | Ollama `think:false` + `format:json` | ✅ Fixed in agent route | Never combine — format:json alone |
 | Vision pass image cap (was 6) | ✅ Fixed | Now chunked, processes all images |
+| Vision pass returning empty subjects | ✅ Fixed | `num_predict` was 900 — too low for multi-image JSON. Now `m*800` (min 600). Timeout raised to 150s via `VISION_TIMEOUT_MS`. Added console.warn/error logs. |
+| `WEAK_PATTERNS` blocking valid CTAs | ✅ Fixed | Removed "save this", "stop scrolling", "did you know", "the truth about", "this is why" from WEAK_PATTERNS — these are all valid social copy. Only truly weak patterns remain. |
 | `slides/caption`, `slides/rewrite`, `slides/regenerate` `think:false` bug | ✅ Fixed | Removed `think:false` from all 3 |
 | AIPanel.tsx build error (em dash in hint attr) | ✅ Not actually broken — build passes | Was a Turbopack hot-reload glitch |
-| Timeline clips not showing | ⏳ Pending | addClip fires but UI doesn't reflect |
+| Timeline clips not showing | ✅ Fixed | Timeline now derives clips from persisted `activeComposition` via `useEffect` in Timeline.tsx. Also belt-and-suspenders `addClip` in SSE handler. Survives page refresh. |
 | HyperFrames audio in preview | ⏳ Investigate | WAVs generated, narrationPaths in inputProps |
 | `Gemma's` smart apostrophe in hint | N/A | em dash `—` at col 49 line 751 is valid UTF-8 in JSX |
+| Modelfile wrong output schema | ✅ Fixed | Rebuilt with 6 role blocks matching actual pipeline schemas. Rebuild: `ollama create visio-gemma -f Modelfile` |
+| Generation 310s+ for 45s video | ✅ Fixed | `reelJsonNumPredict` formula reduced (3600→2190 for 45s). `WorkflowCriticPass` disabled. TTS parallel. Web+Vision parallel. |
+| TTS sequential bottleneck | ✅ Fixed | `generateSceneTTS()` now uses `Promise.allSettled` — all scenes TTS in parallel. |
+| Vision + Web context sequential | ✅ Fixed | Both pipelines now await `Promise.allSettled([describeImagesBatch, fetchWebContext])` in parallel. |
+| AIPanel CSS dark olive text | ✅ Fixed | 5 color values brightened: `#334400→#7a9900`, `#445500→#88aa22`, `#557700→#99bb33`, `#667700→#aabb44`, `#555→#888` |
 
 ---
 
@@ -607,12 +616,15 @@ cd ~/Desktop/voicebox && ~/miniforge3/envs/voicebox/bin/uvicorn backend.main:app
 
 ## 18 · Modelfile (`./Modelfile`)
 
-Custom system prompt baked into `visio-gemma` model:
-- Role: expert social media video director + scriptwriter
-- Platform specs: TikTok / Reels / Shorts / Pinterest / X (dimensions, duration, tone)
-- 2026 content rules: 0.8s hook, word-by-word captions, raw aesthetic, velocity edits
-- CapCut effect awareness: cinematic / dark-moody / vibrant / neon
-- JSON-only output (no markdown, no explanation)
+Custom system prompt baked into `visio-gemma` model with 6 role blocks:
+- `[ROLE: vision]` → `{"notes":[{subject,mood,palette,composition,text_zone,content_type,copy_style}]}`
+- `[ROLE: director]` → DirectorBrief JSON (title, logline, hook, palette, typography, scenes[])
+- `[ROLE: reel]` → `{"scenes":[{src,caption,kicker,accent,transition,narration}]}`
+- `[ROLE: slides]` → N self-contained HTML documents separated by `---SLIDE---`
+- `[ROLE: copy]` → `{"title":"...","body":"..."}`
+- `[ROLE: caption]` → `{"hook":"...","caption":"...","hashtags":[],"cta":"..."}`
+- Params: temperature 0.85, top_p 0.92, top_k 40, num_ctx 32768, repeat_penalty 1.15
+- JSON-only output: no markdown, no prose, no code fences ever
 
 Rebuild after editing: `ollama create visio-gemma -f Modelfile`
 
@@ -642,3 +654,8 @@ Used by static legacy compositions. Not yet wired to AI-generated reels (future 
 8. **ttsVoiceId vs ttsVoice** — `ttsVoiceId` is the canonical state (e.g. `"af_bella"`); `ttsVoice` is legacy string for backwards compat; `setTTSVoiceId` updates both
 9. **No DuckDuckGo** — DDG is removed; web context uses Reddit (public) + Brave (optional key) + Wikipedia
 10. **Director brief is APPROVED copy** — when a DirectorBrief exists, the reel prompt uses its headlines verbatim; Gemma only picks image paths and transitions
+11. **Timeline derives from editor store** — Timeline.tsx has a `useEffect` that calls `addClip` when `activeComposition` changes. The editor store is persisted; the timeline store is in-memory. Don't try to persist the timeline store — derive it from the editor store instead.
+12. **TTS is always parallel** — `generateSceneTTS()` uses `Promise.allSettled`. Never make it sequential.
+13. **Vision + Web are parallel** — both REMOTION and HYPERFRAMES pipelines run `describeImagesBatch` and `fetchWebContext` via `Promise.allSettled`. Keep them parallel.
+14. **WorkflowCriticPass is disabled** — `CRITIC_ENABLED = false`. Do not re-enable unless explicitly asked.
+15. **VISION_CHUNK_SIZE = 2** — Reduced from 3 to prevent JSON truncation. Do not increase above 2 unless `num_predict` budget is also raised proportionally.

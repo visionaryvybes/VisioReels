@@ -25,16 +25,9 @@ const BANNED_PHRASES = [
 ] as const;
 
 const WEAK_PATTERNS = [
-  "save this",
-  "save for later",
-  "follow for more",
   "comment your thoughts",
   "link in bio",
-  "swipe to see",
-  "stop scrolling",
-  "did you know",
-  "the truth about",
-  "this is why",
+  "follow for more",
 ] as const;
 
 export function normalizeText(text: string): string {

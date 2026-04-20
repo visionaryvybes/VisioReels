@@ -290,7 +290,7 @@ export function AIPanel() {
                 const config = COMPOSITION_CONFIGS[compId] ?? COMPOSITION_CONFIGS['Reel'];
                 setActiveComposition(compId, config);
                 setComposition(compId, prompt, `out/preview-${compId}.png`);
-                addClip({ composition: compId, durationInFrames: config.durationInFrames, fps: config.fps, color: '#fff', label: compId });
+                addClip({ composition: compId, durationInFrames: config.durationInFrames, fps: config.fps, label: compId });
                 break;
               }
               case 'html_slide_video': {
@@ -310,7 +310,6 @@ export function AIPanel() {
                   composition: 'HtmlSlideVideo',
                   durationInFrames: d,
                   fps: 30,
-                  color: '#ccff00',
                   label: 'HTML slides',
                 });
                 break;
@@ -319,11 +318,13 @@ export function AIPanel() {
                 setCompositionInputProps(null);
                 const w = typeof ev.width === 'number' ? ev.width : REEL_ASPECTS[aspect].w;
                 const h = typeof ev.height === 'number' ? ev.height : REEL_ASPECTS[aspect].h;
-                const d = ev.durationInFrames as number;
-                const compId = ev.componentName as string;
+                const d = typeof ev.durationInFrames === 'number' && ev.durationInFrames > 0 ? ev.durationInFrames : 300;
+                const compId = typeof ev.componentName === 'string' && ev.componentName ? ev.componentName : 'Reel';
                 setActiveComposition(compId, { durationInFrames: d, fps: 30, width: w, height: h });
                 setComposition(compId, prompt, `out/preview-${compId}.png`);
-                addClip({ composition: compId, durationInFrames: d, fps: 30, color: '#fff', label: compId });
+                // addClip is also called reactively by Timeline's useEffect on activeComposition change.
+                // Belt-and-suspenders: call it here too so clips are immediately visible.
+                addClip({ composition: compId, durationInFrames: d, fps: 30, label: compId });
                 break;
               }
               case 'composition_meta': {
@@ -772,7 +773,7 @@ export function AIPanel() {
                 marginLeft: 'auto',
                 fontSize: 8,
                 letterSpacing: '0.12em',
-                color: vbRunning === null ? '#555' : vbRunning ? '#54d38f' : '#ff4444',
+                color: vbRunning === null ? '#888' : vbRunning ? '#54d38f' : '#ff4444',
               }}>
                 {vbRunning === null ? '·  CHECKING…' : vbRunning ? '●  ONLINE' : '●  OFFLINE'}
               </span>
@@ -1023,18 +1024,19 @@ export function AIPanel() {
                       style={{
                         position: 'absolute', left: 0, right: 0, bottom: 0,
                         background: 'linear-gradient(to top, rgba(0,0,0,0.94) 0%, rgba(0,0,0,0.35) 70%, transparent 100%)',
-                        padding: '10px 26px 8px 8px',
+                        padding: '8px 26px 6px 8px',
                         maxHeight: '48%',
                         color: '#ccff00',
-                        fontSize: 8,
+                        fontSize: 10,
                         fontFamily: 'var(--font-dm-mono), monospace',
                         lineHeight: 1.3,
                         letterSpacing: '0.02em',
                         overflow: 'hidden',
                         display: '-webkit-box',
                         WebkitBoxOrient: 'vertical',
-                        WebkitLineClamp: 4,
+                        WebkitLineClamp: 3,
                         wordBreak: 'break-word',
+                        textShadow: '0 1px 4px rgba(0,0,0,0.9)',
                       }}
                     >
                       {note.subject}
@@ -1130,14 +1132,14 @@ export function AIPanel() {
                 { label: 'MOTION', value: concept.motion_energy },
               ].map(({ label, value }) => value ? (
                 <div key={label} style={{ background: '#0a0f00', border: '1px solid #1a2400', padding: '8px 10px' }}>
-                  <span style={{ display: 'block', fontSize: 8, fontFamily: 'var(--font-dm-mono), monospace', color: '#557700', letterSpacing: '0.12em', marginBottom: 4 }}>{label}</span>
+                  <span style={{ display: 'block', fontSize: 8, fontFamily: 'var(--font-dm-mono), monospace', color: '#99bb33', letterSpacing: '0.12em', marginBottom: 4 }}>{label}</span>
                   <span style={{ fontSize: 10, fontFamily: 'var(--font-dm-mono), monospace', color: '#c8e860', lineHeight: 1.4 }}>{value}</span>
                 </div>
               ) : null)}
             </div>
             {concept.scene_beats.length > 0 && (
               <div style={{ background: '#060900', border: '1px solid #1a2400', padding: '10px 12px' }}>
-                <span style={{ display: 'block', fontSize: 8, fontFamily: 'var(--font-dm-mono), monospace', color: '#557700', letterSpacing: '0.12em', marginBottom: 8 }}>SCENE BEATS</span>
+                <span style={{ display: 'block', fontSize: 8, fontFamily: 'var(--font-dm-mono), monospace', color: '#99bb33', letterSpacing: '0.12em', marginBottom: 8 }}>SCENE BEATS</span>
                 <ol style={{ margin: 0, padding: '0 0 0 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {concept.scene_beats.map((beat, i) => (
                     <li key={i} style={{ fontSize: 9, fontFamily: 'var(--font-dm-mono), monospace', color: '#99bb44', lineHeight: 1.45 }}>{beat}</li>
@@ -1170,11 +1172,11 @@ export function AIPanel() {
               <span style={{ fontSize: 8, fontFamily: 'var(--font-dm-mono), monospace', letterSpacing: '0.14em', color: '#88cc00', fontWeight: 700 }}>
                 ◈ DIRECTOR · SCENE BREAKDOWN
               </span>
-              <span style={{ fontSize: 8, fontFamily: 'var(--font-dm-mono), monospace', color: '#445500', letterSpacing: '0.08em' }}>
+              <span style={{ fontSize: 8, fontFamily: 'var(--font-dm-mono), monospace', color: '#88aa22', letterSpacing: '0.08em' }}>
                 {directorBrief.scenes.length} SCENES · {directorBrief.overall_energy.toUpperCase()} ENERGY
               </span>
             </div>
-            <div style={{ fontSize: 9, fontFamily: 'var(--font-dm-mono), monospace', color: '#667700', lineHeight: 1.45, marginBottom: 4 }}>
+            <div style={{ fontSize: 9, fontFamily: 'var(--font-dm-mono), monospace', color: '#aabb44', lineHeight: 1.45, marginBottom: 4 }}>
               {directorBrief.typography.headline_font} · {directorBrief.typography.mono_font} · {directorBrief.motion_language}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -1204,7 +1206,7 @@ export function AIPanel() {
                       {i + 1} · {scene.layout}
                     </span>
                     {scene.primitives.length > 0 && (
-                      <span style={{ fontSize: 7, fontFamily: 'var(--font-dm-mono), monospace', color: '#334400', letterSpacing: '0.06em', marginLeft: 'auto' }}>
+                      <span style={{ fontSize: 7, fontFamily: 'var(--font-dm-mono), monospace', color: '#7a9900', letterSpacing: '0.06em', marginLeft: 'auto' }}>
                         {scene.primitives.join(' · ')}
                       </span>
                     )}
@@ -1213,7 +1215,7 @@ export function AIPanel() {
                     {scene.headline}
                   </div>
                   {scene.kicker && (
-                    <div style={{ fontSize: 8, fontFamily: 'var(--font-dm-mono), monospace', color: '#667700', lineHeight: 1.3 }}>
+                    <div style={{ fontSize: 8, fontFamily: 'var(--font-dm-mono), monospace', color: '#aabb44', lineHeight: 1.3 }}>
                       {scene.kicker}
                     </div>
                   )}

@@ -1,11 +1,29 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { useTimelineStore } from '@/stores/timeline-store';
+import { useEditorStore } from '@/stores/editor-store';
 
 export function Timeline() {
-  const { clips, currentFrame, setCurrentFrame, setSelected, selectedClipId } = useTimelineStore();
+  const { clips, currentFrame, setCurrentFrame, setSelected, selectedClipId, addClip } = useTimelineStore();
+  const activeComposition = useEditorStore((s) => s.activeComposition);
+  const compositionConfig = useEditorStore((s) => s.compositionConfig);
   const trackRef = useRef<HTMLDivElement>(null);
+
+  // Sync timeline from persisted editor store — fires whenever the active composition
+  // changes (from SSE handler, page refresh, or manual composition switch).
+  // This is the authoritative source: if a composition is active, it must appear in the timeline.
+  useEffect(() => {
+    if (activeComposition && compositionConfig) {
+      addClip({
+        composition: activeComposition,
+        durationInFrames: compositionConfig.durationInFrames,
+        fps: compositionConfig.fps ?? 30,
+        label: activeComposition,
+      });
+    }
+  }, [activeComposition, compositionConfig, addClip]);
+
   const totalFrames = clips.reduce((max, c) => Math.max(max, c.durationInFrames), 1);
 
   const handleTrackClick = (e: React.MouseEvent<HTMLDivElement>) => {

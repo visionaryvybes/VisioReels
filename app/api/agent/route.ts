@@ -85,7 +85,7 @@ function htmlSlideStreamTimeoutMs(slideCap: number, numPredict: number): number 
 async function streamOllama(
   prompt: string,
   onToken: (t: string) => void,
-  opts: { temperature?: number; num_predict?: number; timeoutMs?: number } = {}
+  opts: { temperature?: number; num_predict?: number; timeoutMs?: number; num_ctx?: number } = {}
 ): Promise<string> {
   const timeoutMs =
     typeof opts.timeoutMs === "number" && opts.timeoutMs >= 15_000 ? opts.timeoutMs : STREAM_TIMEOUT_MS;
@@ -105,7 +105,7 @@ async function streamOllama(
         options: {
           temperature: opts.temperature ?? 0.1,
           top_p: 0.9,
-          num_ctx: 16384,
+          num_ctx: opts.num_ctx ?? 16384,
           num_predict: opts.num_predict ?? 4096,
           num_thread: 8,
           repeat_penalty: 1.18,
@@ -288,7 +288,9 @@ function copyLimitsForDuration(targetSec: number): { captionMax: number; kickerM
 }
 
 function reelJsonNumPredict(targetSec: number): number {
-  return Math.min(8192, Math.round(2200 + targetSec * 42));
+  // ~12 scenes × 150 tok each = 1800 for a 45s reel. Old formula was 4x too generous
+  // (gave 4090 for 45s = 409s wait at 10tok/s). Cap at 3600 — enough for any reel.
+  return Math.min(3600, Math.round(1200 + targetSec * 22));
 }
 
 function freeformNumPredict(targetSec: number): number {
@@ -372,27 +374,41 @@ interface ChatMessage {
   images?: string[];
 }
 
-// Timeout for non-streaming (brain/vision) calls: 60s should be ample for JSON responses.
+// Timeout for non-streaming (brain/vision) calls.
 const CHAT_TIMEOUT_MS = 60_000;
+// Vision calls are slower — multimodal encoding + generation on local hardware.
+const VISION_TIMEOUT_MS = 150_000;
 
-async function callOllamaChat(messages: ChatMessage[], jsonMode: boolean): Promise<string> {
+interface ChatCallOverrides {
+  temperature?: number;
+  num_predict?: number;
+  num_ctx?: number;
+  timeoutMs?: number;
+}
+
+async function callOllamaChat(
+  messages: ChatMessage[],
+  jsonMode: boolean,
+  overrides: ChatCallOverrides = {}
+): Promise<string> {
   // NOTE: Do NOT set think:false with format:"json" — Gemma 4 silently ignores the
   // format constraint when think is disabled (Ollama bug #15260). Omit think entirely
   // so JSON mode works correctly. Strip any <think>...</think> blocks in post-processing.
+  const timeoutMs = overrides.timeoutMs ?? CHAT_TIMEOUT_MS;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   const payload = {
     messages,
     stream: false,
     ...(jsonMode ? { format: "json" } : {}),
     options: {
-      temperature: 0.22,
+      temperature: overrides.temperature ?? 0.22,
       top_p: 0.85,
       top_k: 32,
       repeat_penalty: 1.22,
-      num_ctx: 16384,
-      num_predict: 900,
+      num_ctx: overrides.num_ctx ?? 16384,
+      num_predict: overrides.num_predict ?? 900,
     },
   };
   const call = (model: string) =>
@@ -614,20 +630,24 @@ async function runBrainPass(
   aspect: string,
   creative: HyperframesCreativeProfile,
   targetSec: number,
-  maxScenes: number
+  maxScenes: number,
+  preloadedWebContext?: string  // Pass in if already fetched in parallel with vision
 ): Promise<{ concept: ConceptBrief; brief: DirectorBrief | null }> {
-  // Fetch real-world context (design trends, domain vocabulary) to inject into the director brief.
-  // This gives Gemma grounded copy ideas rather than generic filler. Fails silently if offline.
   const intentEarly = detectCreativeIntent(userBrief);
   const contentTypes = visionNotes.map((n) => n.content_type ?? "").filter(Boolean);
   const copyStyles = visionNotes.map((n) => n.copy_style ?? "").filter(Boolean);
-  const webQueries = buildContextQueries(userBrief, contentTypes, copyStyles);
-  const webContextItems = await fetchWebContext(webQueries);
-  const webContext = formatWebContext(webContextItems, {
-    isRoast: intentEarly.isRoast,
-    captionTone: creative.captionTone,
-    contentTypes,
-  });
+
+  // Use pre-fetched web context if available; otherwise fetch now (fallback for non-image paths)
+  let webContext = preloadedWebContext ?? "";
+  if (!webContext) {
+    const webQueries = buildContextQueries(userBrief, contentTypes, copyStyles);
+    const webContextItems = await fetchWebContext(webQueries);
+    webContext = formatWebContext(webContextItems, {
+      isRoast: intentEarly.isRoast,
+      captionTone: creative.captionTone,
+      contentTypes,
+    });
+  }
 
   const prompt = buildDirectorPrompt(
     userBrief,
@@ -773,6 +793,7 @@ async function runManagedBrainPass(opts: {
   maxScenes: number;
   pipeline: "remotion" | "hyperframes" | "freeform";
   send?: (event: Record<string, unknown>) => void;
+  preloadedWebContext?: string;
 }): Promise<{ concept: ConceptBrief; brief: DirectorBrief | null; critique: WorkflowCritique | null }> {
   const first = await runBrainPass(
     opts.userBrief,
@@ -781,14 +802,17 @@ async function runManagedBrainPass(opts: {
     opts.aspect,
     opts.creative,
     opts.targetSec,
-    opts.maxScenes
+    opts.maxScenes,
+    opts.preloadedWebContext
   );
 
   let brief = first.brief;
   let concept = first.concept;
   let critique: WorkflowCritique | null = null;
 
-  if (brief) {
+  // WorkflowCriticPass disabled — adds 30-60s on local hardware; flip to true to re-enable
+  const CRITIC_ENABLED = false;
+  if (brief && CRITIC_ENABLED) {
     opts.send?.({ type: "pm_stage", role: "critic", text: "PM critic · reviewing plan before execution…" });
     critique = await runWorkflowCriticPass({
       userBrief: opts.userBrief,
@@ -827,7 +851,7 @@ async function runManagedBrainPass(opts: {
  * Max images per single Gemma vision call. Smaller chunks = fewer truncated `notes`
  * arrays from the model (fixes “only 2 of 6 thumbnails got vision text”).
  */
-const VISION_CHUNK_SIZE = 3;
+const VISION_CHUNK_SIZE = 2; // 2 imgs/call — 3 caused JSON truncation on local hardware
 
 function extractVisionNote(p: Record<string, unknown> | null, a: ImageStats): VisionNote {
   if (!p) return { path: a.path, subject: "", mood: "", palette: [a.dominant], brightness: a.brightness };
@@ -937,13 +961,26 @@ text_zone = where open space or dark area exists (avoid focal subjects/faces).${
 The "notes" array MUST have exactly ${m} entries — same count as images. No merging, no skipping.
 Return ONLY the JSON. No prose.`;
 
+  // Vision calls need generous token budget: each image needs ~200 tokens for the 7 fields.
+  // 3 images × 200 + thinking overhead ≈ 1,200 min. Use 2,400 to be safe.
+  // Also use the longer VISION_TIMEOUT_MS — multimodal encoding on local hardware is slow.
+  const visionOverrides: ChatCallOverrides = {
+    num_predict: Math.max(800, m * 1000), // 1000 tok/image — generous for 7-field JSON
+    num_ctx: 16384, // images need full context window for patch embeddings
+    timeoutMs: VISION_TIMEOUT_MS,
+  };
+
   const run = async (): Promise<VisionNote[]> => {
     const raw = await callOllamaChat(
       [{ role: "user", content: prompt, images: pixelChunk.map((a) => a.base64) }],
-      true
+      true,
+      visionOverrides
     );
     const parsed = safeJson(raw) as Record<string, unknown> | null;
     const notes = Array.isArray(parsed?.notes) ? (parsed!.notes as Record<string, unknown>[]) : null;
+    if (!notes) {
+      console.warn(`[vision] chunk(${m}) — model returned no 'notes' array. raw (first 300): ${raw.slice(0, 300)}`);
+    }
     return pixelChunk.map((a, i) => extractVisionNote((notes?.[i] ?? null) as Record<string, unknown> | null, a));
   };
 
@@ -951,11 +988,13 @@ Return ONLY the JSON. No prose.`;
     let sub = await run();
     let thin = sub.map((note, j) => (!note.subject?.trim() ? j : -1)).filter((j) => j >= 0);
     if (thin.length > 0 && m > 1) {
+      console.warn(`[vision] chunk(${m}) — ${thin.length} thin notes after first pass, retrying…`);
       sub = await run();
     }
     thin = sub.map((note, j) => (!note.subject?.trim() ? j : -1)).filter((j) => j >= 0);
     for (const j of thin) {
       try {
+        console.warn(`[vision] re-describing single image at index ${j} (thin after retry)`);
         const one = await describeChunk([pixelChunk[j]], captionTone);
         sub[j] = one[0] ?? sub[j];
       } catch {
@@ -966,7 +1005,8 @@ Return ONLY the JSON. No prose.`;
       out[orig] = sub[j];
     });
     return out;
-  } catch {
+  } catch (err) {
+    console.error(`[vision] chunk(${m}) failed:`, err instanceof Error ? err.message : err);
     pixelIdx.forEach((orig) => {
       const a = chunk[orig];
       out[orig] = { path: a.path, subject: "", mood: "", palette: [a.dominant], brightness: a.brightness };
@@ -2376,42 +2416,48 @@ async function generateSceneTTS(
   const publicDir = projectPath("public", "tts");
   fs.mkdirSync(publicDir, { recursive: true });
 
-  const paths: string[] = [];
-  for (let i = 0; i < scenes.length; i++) {
-    const scene = scenes[i];
-    const text = buildNarrationText({
-      caption: scene.caption,
-      kicker: scene.kicker,
-      narration: scene.narration,
-      captionTone: (captionTone ?? "social") as CaptionTone,
-      sceneIndex: i,
-      totalScenes: scenes.length,
-    });
-    const prepared = trimNarrationToFit(text, sceneDurationSec ?? 2.8);
-    if (!prepared) { paths.push(""); continue; }
+  onProgress(`Voicebox · narrating ${scenes.length} scene(s) in parallel…`);
 
-    const direction = buildVoiceDirection({
-      captionTone: (captionTone ?? "social") as CaptionTone,
-      motionFeel: (motionFeel ?? "smooth") as MotionFeel,
-      contentSeed: `${componentName}:${i}:${prepared}`,
-      roastDelivery: roastDelivery === true,
-      sceneRole:
-        i === 0
-          ? "hook"
-          : i === scenes.length - 1
-            ? "cta"
-            : i >= scenes.length - 2
-              ? "payoff"
-              : "build",
-    });
+  // Fire all scenes simultaneously — Voicebox handles concurrent requests fine.
+  // Each WAV is independent so there's no reason to wait for scene N before starting scene N+1.
+  const results = await Promise.allSettled(
+    scenes.map(async (scene, i) => {
+      const text = buildNarrationText({
+        caption: scene.caption,
+        kicker: scene.kicker,
+        narration: scene.narration,
+        captionTone: (captionTone ?? "social") as CaptionTone,
+        sceneIndex: i,
+        totalScenes: scenes.length,
+      });
+      const prepared = trimNarrationToFit(text, sceneDurationSec ?? 2.8);
+      if (!prepared) return "";
 
-    const filename = `${componentName}-scene-${i}.wav`;
-    const outputPath = path.join(publicDir, filename);
-    onProgress(`TTS scene ${i + 1}/${scenes.length}…`);
+      const direction = buildVoiceDirection({
+        captionTone: (captionTone ?? "social") as CaptionTone,
+        motionFeel: (motionFeel ?? "smooth") as MotionFeel,
+        contentSeed: `${componentName}:${i}:${prepared}`,
+        roastDelivery: roastDelivery === true,
+        sceneRole:
+          i === 0
+            ? "hook"
+            : i === scenes.length - 1
+              ? "cta"
+              : i >= scenes.length - 2
+                ? "payoff"
+                : "build",
+      });
 
-    const ok = await generateSpeech({ text: prepared, profileId, outputPath, engine, ...direction });
-    paths.push(ok ? `tts/${filename}` : "");
-  }
+      const filename = `${componentName}-scene-${i}.wav`;
+      const outputPath = path.join(publicDir, filename);
+      const ok = await generateSpeech({ text: prepared, profileId, outputPath, engine, ...direction });
+      return ok ? `tts/${filename}` : "";
+    })
+  );
+
+  const paths = results.map((r) => (r.status === "fulfilled" ? r.value : ""));
+  const narrated = paths.filter(Boolean).length;
+  onProgress(`Voicebox · ${narrated}/${scenes.length} WAVs ready`);
   return paths;
 }
 
@@ -2556,10 +2602,15 @@ export async function POST(req: NextRequest) {
         let visionNotes: VisionNote[] = [];
         const attachmentsForPrompt = attachments;
 
+        // Pre-start web fetch before image analysis — it only needs the brief text
+        const hfIntentForWeb = detectCreativeIntent(userMessage);
+        const hfWebQueriesEarly = buildContextQueries(userMessage, [], []);
+        let hfPreloadedWebContext = "";
+
         if (hasAttachments) {
           send({
             type: "status",
-            text: `HTML slides · ${label} · scanning ${attachments.length} image(s)…`,
+            text: `HTML slides · scanning ${attachments.length} image(s) + web context · parallel…`,
           });
           const analysisResults = await Promise.all(
             attachments.map((a) => analyzeImage(a.path, a.name))
@@ -2576,15 +2627,28 @@ export async function POST(req: NextRequest) {
             palette: [a.dominant],
             brightness: a.brightness,
           }));
-          if (useVision) {
-            send({
-              type: "status",
-              text: `Vision pass · ${analyses.length} image(s) in ${Math.ceil(analyses.length / VISION_CHUNK_SIZE)} batch(es)…`,
-            });
-            const batchNotes = await describeImagesBatch(analyses, creative.captionTone);
-            visionNotes = visionNotes.map((base, i) => batchNotes[i] ?? base);
-            visionNotes.forEach((note) => send({ type: "vision_note", note }));
-          } else {
+
+          const [hfBatchResult, hfWebResult] = await Promise.allSettled([
+            useVision
+              ? describeImagesBatch(analyses, creative.captionTone)
+              : Promise.resolve([] as VisionNote[]),
+            fetchWebContext(hfWebQueriesEarly),
+          ]);
+
+          const hfBatchNotes = hfBatchResult.status === "fulfilled" ? hfBatchResult.value : [];
+          const hfWebItems = hfWebResult.status === "fulfilled" ? hfWebResult.value : [];
+          hfPreloadedWebContext = formatWebContext(hfWebItems, {
+            isRoast: hfIntentForWeb.isRoast,
+            captionTone: creative.captionTone,
+            contentTypes: [],
+          });
+
+          if (useVision && hfBatchNotes.length > 0) {
+            visionNotes = visionNotes.map((base, i) => hfBatchNotes[i] ?? base);
+          }
+          visionNotes.forEach((note) => send({ type: "vision_note", note }));
+
+          if (!useVision) {
             analyses.forEach((a, i) => {
               send({
                 type: "vision_note",
@@ -2598,6 +2662,14 @@ export async function POST(req: NextRequest) {
               });
             });
           }
+        } else {
+          // No images — still pre-fetch web in background
+          const hfWebItems = await fetchWebContext(hfWebQueriesEarly).catch(() => []);
+          hfPreloadedWebContext = formatWebContext(hfWebItems, {
+            isRoast: hfIntentForWeb.isRoast,
+            captionTone: creative.captionTone,
+            contentTypes: [],
+          });
         }
 
         send({ type: "status", text: `Brain pass · creative director planning your video…` });
@@ -2611,6 +2683,7 @@ export async function POST(req: NextRequest) {
           maxScenes: slideCap,
           pipeline: "hyperframes",
           send,
+          preloadedWebContext: hfPreloadedWebContext,
         });
         if (hfConcept.title) send({ type: "brain_concept", concept: hfConcept });
         if (hfBrief) send({ type: "director_brief", brief: hfBrief });
@@ -2645,6 +2718,7 @@ export async function POST(req: NextRequest) {
               temperature: 0.35,
               num_predict: numPredict,
               timeoutMs: hfTimeoutMs,
+              num_ctx: 8192,
             }
           );
         } catch (e) {
@@ -2829,8 +2903,9 @@ export async function POST(req: NextRequest) {
         }
         const analyses = analysesForAttachments(attachments, analysisResults);
 
-        // Stage 1 — vision pre-pass: describe each image in parallel so Gemma
-        // writes captions grounded in what's actually on screen.
+        // Stage 1 — vision + web run simultaneously.
+        // Web fetch only needs the brief text (no vision notes required), so it can start immediately.
+        // Vision needs the images. Both are independent — run in Promise.all.
         let visionNotes: VisionNote[] = analyses.map((a) => ({
           path: a.path,
           subject: "",
@@ -2838,21 +2913,41 @@ export async function POST(req: NextRequest) {
           palette: [a.dominant],
           brightness: a.brightness,
         }));
-        if (useVision) {
-          send({
-            type: "status",
-            text: `Vision pass · ${analyses.length} image(s) in ${Math.ceil(analyses.length / VISION_CHUNK_SIZE)} batch(es)…`,
-          });
-          const batchNotes = await describeImagesBatch(analyses, creative.captionTone);
+
+        const intentForWeb = detectCreativeIntent(userMessage);
+        const webQueriesEarly = buildContextQueries(userMessage, [], []);
+        send({
+          type: "status",
+          text: useVision
+            ? `Vision + web · parallel · ${analyses.length} image(s)…`
+            : `Web context · fetching…`,
+        });
+
+        const [batchNotesResult, webContextItemsResult] = await Promise.allSettled([
+          useVision
+            ? describeImagesBatch(analyses, creative.captionTone)
+            : Promise.resolve([] as VisionNote[]),
+          fetchWebContext(webQueriesEarly),
+        ]);
+
+        const batchNotes = batchNotesResult.status === "fulfilled" ? batchNotesResult.value : [];
+        const webContextItems = webContextItemsResult.status === "fulfilled" ? webContextItemsResult.value : [];
+        const preloadedWebContext = formatWebContext(webContextItems, {
+          isRoast: intentForWeb.isRoast,
+          captionTone: creative.captionTone,
+          contentTypes: [],
+        });
+
+        if (useVision && batchNotes.length > 0) {
           visionNotes = visionNotes.map((base, i) => batchNotes[i] ?? base);
-          visionNotes.forEach((note) => send({ type: "vision_note", note }));
-        } else {
+        }
+        if (!useVision) {
           analyses.forEach((a, i) => {
             send({
               type: "vision_note",
               note: {
                 path: a.path,
-                subject: `Photo ${i + 1} (${a.name}) — Vision is off; turn it on for AI scene reads, or describe the roast in the prompt.`,
+                subject: `Photo ${i + 1} (${a.name}) — Vision is off; turn it on for AI scene reads.`,
                 mood: "",
                 palette: [a.dominant],
                 brightness: a.brightness,
@@ -2860,6 +2955,7 @@ export async function POST(req: NextRequest) {
             });
           });
         }
+        visionNotes.forEach((note) => send({ type: "vision_note", note }));
 
         send({ type: "status", text: `Brain pass · creative director planning scenes…` });
         const { concept: reelConcept, brief: reelBrief } = await runManagedBrainPass({
@@ -2871,6 +2967,7 @@ export async function POST(req: NextRequest) {
           targetSec: targetDurationSec,
           maxScenes: effectiveMaxScenes,
           pipeline: "remotion",
+          preloadedWebContext,
           send,
         });
         if (reelConcept.title) send({ type: "brain_concept", concept: reelConcept });
@@ -2897,6 +2994,7 @@ export async function POST(req: NextRequest) {
             {
               temperature: reelJsonTemperature(creative),
               num_predict: reelJsonNumPredict(targetDurationSec),
+              num_ctx: 8192,
             }
           );
         } catch (e) {
