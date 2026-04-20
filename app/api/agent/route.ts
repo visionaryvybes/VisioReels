@@ -12,6 +12,7 @@ import {
 } from "@/lib/reel-typography";
 import {
   buildHyperframesCreativeBlock,
+  buildHyperframesTemplatePackBlock,
   buildReelRemixDirective,
   type HyperframesCaptionTone,
   type HyperframesCreativeProfile,
@@ -1158,6 +1159,7 @@ function buildReelPrompt(
   const aspectMeta = ASPECTS[aspect];
   const paceMeta = PACE[pace];
   const creativeBlock = buildHyperframesCreativeBlock(creative);
+  const templatePackBlock = buildHyperframesTemplatePackBlock(userRequest);
 
   // Map caption tone to platform (best match for cultural context)
   const platformForTone: Record<string, Platform> = {
@@ -1273,6 +1275,7 @@ You are a video art director generating a JSON scene plan for a ${aspectMeta.lab
 Pace: ${pace.toUpperCase()} — ${paceMeta.blurb}.
 
 ${creativeBlock}
+${templatePackBlock}
 ${intentRuleBlock}
 ${culturalBlock}
 
@@ -1778,6 +1781,32 @@ function compactWords(text: string): string[] {
     .filter((word) => !["the", "and", "with", "from", "into", "over", "through", "across", "within", "dense", "open"].includes(word));
 }
 
+function cleanWeakSceneText(text: string, fallback: string, limit: number): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  const replacements: Array<[RegExp, string]> = [
+    [/\bwatchful in the\b/gi, "hidden among"],
+    [/\bthrough the grass\b/gi, "across the slope"],
+    [/\bemerging from the\b/gi, "stepping beyond"],
+    [/\beyes on the lens\b/gi, "eyes fixed forward"],
+    [/\bhidden in the grass\b/gi, "low in the dry grass"],
+    [/\bdirect gaze\b/gi, "unbroken stare"],
+    [/\braw[.,]?\s+wild\b/gi, "tense and still"],
+    [/\bvast scale\b/gi, "wide valley backdrop"],
+    [/\bforeground focus\b/gi, "foreground detail"],
+  ];
+  const cleaned = replacements.reduce((acc, [pattern, value]) => acc.replace(pattern, value), normalized);
+  const candidate = cleaned.slice(0, limit).trim();
+  if (
+    candidate &&
+    !findBannedPhrases(candidate).length &&
+    !findWeakPatterns(candidate).length &&
+    !isThinText(candidate, 3)
+  ) {
+    return candidate;
+  }
+  return fallback.slice(0, limit).trim();
+}
+
 function buildLiteralSceneFallback(
   scene: ReelScene,
   note: VisionNote | undefined,
@@ -1789,26 +1818,38 @@ function buildLiteralSceneFallback(
   const mood = (note?.mood ?? "").replace(/\.+$/g, "").trim();
   const subjectWords = compactWords(subject);
   const captionBase = subjectWords.slice(0, 4).join(" ") || `scene ${index + 1}`;
-  const caption = captionBase.toUpperCase().slice(0, limits.captionMax);
+  const captionFallback = captionBase.toUpperCase().slice(0, limits.captionMax);
 
   const kickerSource = composition || subject || mood || scene.kicker || "";
-  const kicker = kickerSource
+  const kickerFallback = kickerSource
     .replace(/^subject\s+/i, "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, limits.kickerMax);
 
   const narrationBase = [subject, composition].filter(Boolean).join(". ");
-  const narration = narrationBase
+  const narrationFallback = narrationBase
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 200);
 
   return {
     ...scene,
-    caption: caption || scene.caption,
-    kicker: kicker || scene.kicker,
-    narration: narration || scene.narration,
+    caption:
+      cleanWeakSceneText(scene.caption, captionFallback || scene.caption, limits.captionMax) ||
+      scene.caption,
+    kicker:
+      cleanWeakSceneText(
+        scene.kicker ?? "",
+        kickerFallback || scene.kicker || scene.caption,
+        limits.kickerMax
+      ) || scene.kicker,
+    narration:
+      cleanWeakSceneText(
+        scene.narration ?? "",
+        narrationFallback || scene.narration || scene.caption,
+        200
+      ) || scene.narration,
   };
 }
 
@@ -2273,6 +2314,7 @@ function buildPrompt(
   const imagesImportNeeded = needsImages(userRequest);
 
   const hfBlock = buildHyperframesCreativeBlock(creative);
+  const templatePackBlock = buildHyperframesTemplatePackBlock(userRequest);
   const codeVisualBlock = buildCodeVisualPowerBlock(creative, canvasW, canvasH, userRequest);
 
   const motionSpringHints: Record<HyperframesMotionFeel, string> = {
@@ -2348,10 +2390,10 @@ function buildPrompt(
   if (filePath && fileContent) {
     const lines = fileContent.split("\n");
     const trimmed = lines.length > 120 ? lines.slice(0, 120).join("\n") + "\n// ... (truncated)" : fileContent;
-    return `${FREEFORM_CODE_CREATIVE_DIRECTIVES}\n\n${hfBlock}\n\n${hfCulturalBlock}\n\n${codeVisualBlock}\n\n${rules}\n${primitivesImportLine}\n- ${determinism}\n\n${layoutSafety}\n\n${strictFormat}${directorBlock}\n\nCURRENT FILE (${filePath}):\n\`\`\`tsx\n${trimmed}\n\`\`\`\n\nTASK: ${userRequest}\n\n${runtimeCopyBlock}\n\nOutput the COMPLETE modified file in a single \`\`\`tsx block. No explanations.`;
+    return `${FREEFORM_CODE_CREATIVE_DIRECTIVES}\n\n${hfBlock}\n\n${templatePackBlock}\n\n${hfCulturalBlock}\n\n${codeVisualBlock}\n\n${rules}\n${primitivesImportLine}\n- ${determinism}\n\n${layoutSafety}\n\n${strictFormat}${directorBlock}\n\nCURRENT FILE (${filePath}):\n\`\`\`tsx\n${trimmed}\n\`\`\`\n\nTASK: ${userRequest}\n\n${runtimeCopyBlock}\n\nOutput the COMPLETE modified file in a single \`\`\`tsx block. No explanations.`;
   }
 
-  return `${FREEFORM_CODE_CREATIVE_DIRECTIVES}\n\n${hfBlock}\n\n${hfCulturalBlock}\n\n${codeVisualBlock}\n\n${rules}\n${primitivesImportLine}\n\n${layoutSafety}\n\n${strictFormat}${directorBlock}\n\nTASK: ${userRequest}\n\nSPECS: ${secs}s = ${durationInFrames}fr @ ${fps}fps, canvas ${canvasW}×${canvasH} (${orient}) — match this composition size in all layout math.\n${runtimeCopyBlock}\nUse <Sequence> or <TransitionSeries> for multiple scenes with cinematic transitions aligned to the creative directive.\n\nOutput format (exactly this shape, nothing else):\n\`\`\`tsx\nimport { useCurrentFrame, ... } from "remotion";\nexport const YourComponentName: React.FC = () => { ... };\n\`\`\`\nFILE: remotion/compositions/YourComponentName.tsx`;
+  return `${FREEFORM_CODE_CREATIVE_DIRECTIVES}\n\n${hfBlock}\n\n${templatePackBlock}\n\n${hfCulturalBlock}\n\n${codeVisualBlock}\n\n${rules}\n${primitivesImportLine}\n\n${layoutSafety}\n\n${strictFormat}${directorBlock}\n\nTASK: ${userRequest}\n\nSPECS: ${secs}s = ${durationInFrames}fr @ ${fps}fps, canvas ${canvasW}×${canvasH} (${orient}) — match this composition size in all layout math.\n${runtimeCopyBlock}\nUse <Sequence> or <TransitionSeries> for multiple scenes with cinematic transitions aligned to the creative directive.\n\nOutput format (exactly this shape, nothing else):\n\`\`\`tsx\nimport { useCurrentFrame, ... } from "remotion";\nexport const YourComponentName: React.FC = () => { ... };\n\`\`\`\nFILE: remotion/compositions/YourComponentName.tsx`;
 }
 
 function hasModuleLevelHook(code: string): boolean {
@@ -3336,21 +3378,21 @@ export async function POST(req: NextRequest) {
                 }
               }
             }
+          }
 
-            if (!validation.ok && /banned phrases|weak phrases|thin copy/i.test(validation.error) && !roastLikeCopy) {
-              const locallyRepaired = locallyRepairWeakReelScenes(
-                applyVisionTextPlacement(parsed as ReelSpec, visionNotes),
-                visionNotes,
-                creative.captionTone,
-                copyLimits
-              );
-              parsed = locallyRepaired;
-              validation = validateReelSpec(parsed, validPaths, copyLimits, effectiveMaxScenes, {
-                roastCopyCheck: roastLikeCopy,
-                copyGuardTone: creative.captionTone,
-                enforceImageOrder: imageOrder,
-              });
-            }
+          if (!validation.ok && /banned phrases|weak phrases|thin copy/i.test(validation.error) && !roastLikeCopy) {
+            const locallyRepaired = locallyRepairWeakReelScenes(
+              applyVisionTextPlacement(parsed as ReelSpec, visionNotes),
+              visionNotes,
+              creative.captionTone,
+              copyLimits
+            );
+            parsed = locallyRepaired;
+            validation = validateReelSpec(parsed, validPaths, copyLimits, effectiveMaxScenes, {
+              roastCopyCheck: roastLikeCopy,
+              copyGuardTone: creative.captionTone,
+              enforceImageOrder: imageOrder,
+            });
           }
         }
 

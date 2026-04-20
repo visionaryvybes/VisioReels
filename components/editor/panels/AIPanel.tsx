@@ -82,6 +82,24 @@ const STYLE_CHIPS = [
   /** Steers freeform TSX toward SVG / charts / HUD — no stock photos required */
   'CODE',
   'VECTOR',
+  'WARM_GRAIN',
+  'PLAY_MODE',
+  'SWISS_GRID',
+  'KINETIC_TYPE',
+  'DECISION_TREE',
+  'PRODUCT_PROMO',
+  'NYT_GRAPH',
+  'VIGNELLI',
+  'FLASH_WHITE',
+  'PARALLAX_PAN',
+  'PIXEL_TRANSITION',
+  'CHART_MOTION',
+  'KEN_BURNS',
+  'ZOOM_PULSE',
+  'CARD_FLIP',
+  'GLITCH_TEXT',
+  'LIQUID_WAVE',
+  'BUBBLE_POP',
 ];
 
 const FEATURED_VOICE_STYLES: Record<string, { tag: string; note: string }> = {
@@ -128,7 +146,7 @@ export function AIPanel() {
   const { setComposition } = useProjectStore();
   const { addClip } = useTimelineStore();
 
-  const [selectedChips, setSelectedChips] = useState<string[]>(['BRUTALIST']);
+  const [selectedChips, setSelectedChips] = useState<string[]>(['CINEMATIC', 'WARM_GRAIN']);
   const isHyperframes = (pipelineMode ?? 'remotion') === 'hyperframes';
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);

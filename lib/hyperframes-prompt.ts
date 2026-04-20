@@ -48,7 +48,13 @@ export type HyperframesStylePack =
   | "flash_white"
   | "parallax_pan"
   | "pixel_transition"
-  | "chart_motion";
+  | "chart_motion"
+  | "ken_burns"
+  | "zoom_pulse"
+  | "card_flip"
+  | "glitch_text"
+  | "liquid_wave"
+  | "bubble_pop";
 
 const STYLE_ALIASES: Record<string, HyperframesStylePack> = {
   raw: "raw",
@@ -84,6 +90,18 @@ const STYLE_ALIASES: Record<string, HyperframesStylePack> = {
   "pixel-transition": "pixel_transition",
   chart_motion: "chart_motion",
   "chart-motion": "chart_motion",
+  ken_burns: "ken_burns",
+  "ken-burns": "ken_burns",
+  zoom_pulse: "zoom_pulse",
+  "zoom-pulse": "zoom_pulse",
+  card_flip: "card_flip",
+  "card-flip": "card_flip",
+  glitch_text: "glitch_text",
+  "glitch-text": "glitch_text",
+  liquid_wave: "liquid_wave",
+  "liquid-wave": "liquid_wave",
+  bubble_pop: "bubble_pop",
+  "bubble-pop": "bubble_pop",
 };
 
 const STYLE_PACK_LINES: Record<HyperframesStylePack, string[]> = {
@@ -174,6 +192,30 @@ const STYLE_PACK_LINES: Record<HyperframesStylePack, string[]> = {
   chart_motion: [
     "CHART_MOTION — bars, lines, counters, progress arcs, and annotation beats should animate with clarity.",
     "Best when the story benefits from structured information rather than generic cinematic copy.",
+  ],
+  ken_burns: [
+    "KEN_BURNS — premium pan-and-zoom photo storytelling, subtle reframing, documentary elegance.",
+    "Use motion to reveal new details or safe text space, not random drifting.",
+  ],
+  zoom_pulse: [
+    "ZOOM_PULSE — use restrained impact zooms on major reveal beats or emphasis words.",
+    "Pulse should punctuate the scene, not turn the whole video into constant breathing motion.",
+  ],
+  card_flip: [
+    "CARD_FLIP — reserve for one or two reveals where the scene benefits from a literal perspective turn.",
+    "Keep the camera move smooth and premium, not novelty-heavy.",
+  ],
+  glitch_text: [
+    "GLITCH_TEXT — text distortion can accent a key phrase, but legibility must recover instantly.",
+    "Use as a punctuation mark, not the base typography system.",
+  ],
+  liquid_wave: [
+    "LIQUID_WAVE — use fluid masks, ink-like distortion, or wave transitions for atmospheric scenes.",
+    "Pair with slower pacing or editorial builds; avoid cheap screensaver energy.",
+  ],
+  bubble_pop: [
+    "BUBBLE_POP — playful label entrances, stat chips, or social callouts can pop with soft overshoot.",
+    "Keep the composition polished and sparse enough that the pops feel designed.",
   ],
 };
 
