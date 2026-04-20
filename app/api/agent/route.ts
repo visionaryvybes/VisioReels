@@ -33,6 +33,7 @@ import {
 import { generateSpeech, resolveProfileForNarration, ensurePresetProfile, warmupVoicebox } from "@/lib/voicebox";
 import { buildVoiceDirection, buildNarrationText, type CaptionTone, type MotionFeel } from "@/lib/voice-director";
 import { buildCulturalContext, type Platform } from "@/lib/cultural-context";
+import { extractJsonObjectText, parseModelJsonObject, safeModelJsonObject } from "@/lib/json-repair";
 
 /** Repo-root paths for fs I/O. turbopackIgnore prevents NFT from tracing all of process.cwd(). */
 function projectPath(...parts: string[]): string {
@@ -141,7 +142,18 @@ async function streamOllama(
         try {
           const tok = JSON.parse(line)?.message?.content ?? "";
           if (tok) { full += tok; onToken(tok); }
-        } catch { /* skip malformed chunk */ }
+        } catch {
+          throw new Error("Malformed Ollama stream chunk");
+        }
+      }
+    }
+    const tail = buf.trim();
+    if (tail) {
+      try {
+        const tok = JSON.parse(tail)?.message?.content ?? "";
+        if (tok) { full += tok; onToken(tok); }
+      } catch {
+        throw new Error("Malformed Ollama stream tail");
       }
     }
     return full.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
@@ -664,11 +676,11 @@ async function runBrainPass(
       [{ role: "user", content: prompt }],
       true
     );
-    const parsed = safeJson(raw);
-    const brief = parseDirectorBrief(parsed, maxScenes);
+    const brief = parseDirectorBrief(raw, maxScenes);
     if (brief) {
       return { concept: briefToConceptCompat(brief), brief };
     }
+    const parsed = safeJson(raw);
     // Fallback: try to salvage a minimal ConceptBrief if DirectorBrief parse fails
     const p = (parsed ?? {}) as Record<string, unknown>;
     if (p.title && p.logline) {
@@ -1041,110 +1053,12 @@ async function describeImagesBatch(
 }
 
 function safeJson(raw: string): unknown | null {
-  // Strip <think>…</think> blocks — Gemma 4 sometimes wraps its reasoning around the JSON.
-  // Also strip markdown code fences (```json … ```) that Gemma may output before the object.
-  const clean = raw
-    .replace(/<think>[\s\S]*?<\/think>/g, "")
-    .replace(/```(?:json)?\s*/gi, "")
-    .replace(/```\s*$/g, "")
-    .trim();
-
-  try { return JSON.parse(clean); } catch { /* fall through */ }
-  // Last-resort: find first '{' to last '}' in cleaned string
-  const first = clean.indexOf("{");
-  const last = clean.lastIndexOf("}");
-  if (first >= 0 && last > first) {
-    try { return JSON.parse(clean.slice(first, last + 1)); } catch { return null; }
-  }
-  return null;
-}
-
-function normalizeGemmaJsonCandidate(input: string): string {
-  return input
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/,\s*([}\]])/g, "$1")
-    .replace(/[\u0000-\u0019]+/g, " ")
-    .trim();
-}
-
-function balancePossiblyTruncatedJson(input: string): string {
-  const normalized = normalizeGemmaJsonCandidate(input);
-  if (!normalized) return normalized;
-
-  const stack: string[] = [];
-  let inString = false;
-  let escaped = false;
-
-  for (let i = 0; i < normalized.length; i += 1) {
-    const ch = normalized[i];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (ch === "\\") {
-      if (inString) escaped = true;
-      continue;
-    }
-    if (ch === "\"") {
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-    if (ch === "{" || ch === "[") {
-      stack.push(ch);
-      continue;
-    }
-    if (ch === "}" && stack[stack.length - 1] === "{") {
-      stack.pop();
-      continue;
-    }
-    if (ch === "]" && stack[stack.length - 1] === "[") {
-      stack.pop();
-    }
-  }
-
-  let repaired = normalized.replace(/,\s*$/g, "");
-  while (/[,\s]$/.test(repaired)) {
-    repaired = repaired.replace(/,\s*$/g, "").trimEnd();
-  }
-
-  for (let i = stack.length - 1; i >= 0; i -= 1) {
-    repaired += stack[i] === "{" ? "}" : "]";
-  }
-
-  return repaired;
+  return safeModelJsonObject(raw);
 }
 
 function parseGemmaJsonObject(raw: string): { value: unknown | null; extracted: string | null; error?: string } {
-  const extracted = extractJson(raw);
-  if (!extracted) {
-    return { value: null, extracted: null, error: "No JSON object found in model output" };
-  }
-
-  const candidates = [
-    extracted,
-    normalizeGemmaJsonCandidate(extracted),
-    balancePossiblyTruncatedJson(extracted),
-  ];
-
-  for (const candidate of candidates) {
-    try {
-      return { value: JSON.parse(candidate), extracted: candidate };
-    } catch (e) {
-      const fallback = safeJson(candidate);
-      if (fallback !== null) return { value: fallback, extracted: candidate };
-      if (candidate === candidates[candidates.length - 1]) {
-        return {
-          value: null,
-          extracted,
-          error: e instanceof Error ? e.message : String(e),
-        };
-      }
-    }
-  }
-
-  return { value: null, extracted, error: "Unknown JSON parse failure" };
+  const parsed = parseModelJsonObject(raw);
+  return { value: parsed.value, extracted: parsed.extracted, error: parsed.error };
 }
 
 const VALID_TRANSITIONS = [
@@ -1399,18 +1313,6 @@ Now produce the JSON.
 `;
 }
 
-function extractJson(response: string): string | null {
-  const fenced = response.match(/```(?:json)?\s*\n([\s\S]*?)```/);
-  if (fenced) return fenced[1].trim();
-  // fallback: first brace to matching close (greedy); if the model truncated the
-  // tail, still return the partial object so the salvage parser can repair it.
-  const first = response.indexOf("{");
-  const last = response.lastIndexOf("}");
-  if (first >= 0 && last > first) return response.slice(first, last + 1);
-  if (first >= 0) return response.slice(first).trim();
-  return null;
-}
-
 function extractHtmlSlidesArray(raw: unknown): string[] {
   if (!raw || typeof raw !== "object") return [];
   const slides = (raw as Record<string, unknown>).slides;
@@ -1449,15 +1351,15 @@ function parseHtmlSlidesFromGemma(fullResponse: string): string[] {
     const t = one.trim();
     if (t.startsWith("{")) {
       try {
-        const fromJson = extractHtmlSlidesArray(JSON.parse(t));
+        const fromJson = extractHtmlSlidesArray(parseModelJsonObject(t).value);
         if (fromJson.length) return fromJson;
       } catch {
         /* try brace extraction */
       }
-      const jsonStr = extractJson(stripped);
+      const jsonStr = extractJsonObjectText(stripped);
       if (jsonStr) {
         try {
-          const fromJson = extractHtmlSlidesArray(JSON.parse(jsonStr));
+          const fromJson = extractHtmlSlidesArray(parseModelJsonObject(jsonStr).value);
           if (fromJson.length) return fromJson;
         } catch {
           /* ignore */
@@ -1468,10 +1370,10 @@ function parseHtmlSlidesFromGemma(fullResponse: string): string[] {
     }
   }
 
-  const jsonStr = extractJson(stripped);
+  const jsonStr = extractJsonObjectText(stripped);
   if (jsonStr) {
     try {
-      const fromJson = extractHtmlSlidesArray(JSON.parse(jsonStr));
+      const fromJson = extractHtmlSlidesArray(parseModelJsonObject(jsonStr).value);
       if (fromJson.length) return fromJson;
     } catch {
       /* ignore */
@@ -1951,9 +1853,9 @@ INPUT JSON:
 ${badJson.slice(0, 14_000)}`;
   try {
     const raw = await callOllamaChat([{ role: "user", content: prompt }], true);
-    const p = safeJson(raw);
-    if (p && typeof p === "object" && Array.isArray((p as Record<string, unknown>).scenes)) {
-      return JSON.stringify(p);
+    const p = parseGemmaJsonObject(raw);
+    if (p.value && Array.isArray((p.value as Record<string, unknown>).scenes)) {
+      return JSON.stringify(p.value);
     }
   } catch {
     /* fall through */
@@ -1986,6 +1888,7 @@ STRICT:
 - Keep "title" / "brandName" unless clearly broken.
 ${orderBlock || "- Keep src values valid and scene count stable."}
 - Remove banned phrases: in today's fast-paced world, revolutionary, game-changing, unlock, elevate, here's the thing, let's dive in, buckle up, the future of, curated
+- Remove weak stock phrasing: watchful in the, through the grass, emerging from the, eyes on the lens
 - Avoid thin copy. Each scene needs enough substance to work on screen and in TTS.
 - Tone: ${captionTone}
 
@@ -1995,9 +1898,9 @@ INPUT JSON:
 ${badJson.slice(0, 14_000)}`;
   try {
     const raw = await callOllamaChat([{ role: "user", content: prompt }], true);
-    const p = safeJson(raw);
-    if (p && typeof p === "object" && Array.isArray((p as Record<string, unknown>).scenes)) {
-      return JSON.stringify(p);
+    const p = parseGemmaJsonObject(raw);
+    if (p.value && Array.isArray((p.value as Record<string, unknown>).scenes)) {
+      return JSON.stringify(p.value);
     }
   } catch {
     /* fall through */
@@ -3286,7 +3189,7 @@ export async function POST(req: NextRequest) {
 
         const repairableReel =
           !validation.ok &&
-          /jargon|startup|duplicate|exactly|must use|only once|more\s+than|scenes has|required|not one of|banned phrases|thin copy/i.test(
+          /jargon|startup|duplicate|exactly|must use|only once|more\s+than|scenes has|required|not one of|banned phrases|weak phrases|thin copy/i.test(
             validation.error
           );
 

@@ -5,6 +5,7 @@ import sharp from "sharp";
 import { SLIDE_PRESETS, getPreset } from "@/lib/slide-presets";
 import { pickPreset } from "@/lib/preset-auto";
 import { buildHyperframesSlidesStagingBlock } from "@/lib/hyperframes-prompt";
+import { safeModelJsonObject } from "@/lib/json-repair";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -190,7 +191,7 @@ Return ONLY the JSON.`;
       [{ role: "user", content: prompt, images: analyses.map((a) => a.base64) }],
       true
     );
-    const parsed = extractJson(raw) as Record<string, unknown> | null;
+    const parsed = safeModelJsonObject(raw);
     const notes = Array.isArray(parsed?.notes) ? (parsed!.notes as Record<string, unknown>[]) : null;
     return analyses.map((a, i) => {
       const p = notes?.[i] as Partial<VisionNote> | null;
@@ -421,16 +422,6 @@ ${manifest}
 Now return ONLY the JSON object. Write like someone who actually posts on ${guide.label} — not like a bot describing what a post looks like.`;
 }
 
-function extractJson(raw: string): unknown | null {
-  try { return JSON.parse(raw); } catch { /* fall through */ }
-  const first = raw.indexOf("{");
-  const last = raw.lastIndexOf("}");
-  if (first >= 0 && last > first) {
-    try { return JSON.parse(raw.slice(first, last + 1)); } catch { return null; }
-  }
-  return null;
-}
-
 function validateHex(s: string | undefined): string | undefined {
   if (!s) return undefined;
   const t = s.trim();
@@ -567,7 +558,7 @@ export async function POST(req: NextRequest) {
         true,
         true
       );
-      const parsed = extractJson(raw) as Partial<SlidesResponse> | null;
+      const parsed = safeModelJsonObject(raw) as Partial<SlidesResponse> | null;
       if (!parsed || !Array.isArray(parsed.slides) || parsed.slides.length === 0) {
         throw new Error("empty response");
       }

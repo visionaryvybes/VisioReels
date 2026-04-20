@@ -7,6 +7,7 @@ import {
   sanitizeOneLine,
   sanitizeParagraph,
 } from "@/lib/copy-guard";
+import { safeModelJsonObject } from "@/lib/json-repair";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -85,16 +86,6 @@ function validatePlatform(p: unknown): Platform {
   return "instagram";
 }
 
-function extractJson(raw: string): unknown | null {
-  try { return JSON.parse(raw); } catch { /* fallthrough */ }
-  const first = raw.indexOf("{");
-  const last = raw.lastIndexOf("}");
-  if (first >= 0 && last > first) {
-    try { return JSON.parse(raw.slice(first, last + 1)); } catch { return null; }
-  }
-  return null;
-}
-
 async function generateCaption(prompt: string): Promise<{
   hook?: string;
   caption?: string;
@@ -122,7 +113,7 @@ async function generateCaption(prompt: string): Promise<{
   if (!res.ok) throw new Error(`Ollama ${res.status}`);
   const j = await res.json();
   const raw = (j?.message?.content ?? "") as string;
-  return extractJson(raw) as {
+  return safeModelJsonObject(raw) as {
     hook?: string;
     caption?: string;
     hashtags?: string[];

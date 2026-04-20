@@ -1,3 +1,5 @@
+import { safeModelJsonObject } from "@/lib/json-repair";
+
 /**
  * DirectorBrief — the creative director's full pre-production specification.
  *
@@ -141,25 +143,9 @@ function sanitizeScene(raw: Record<string, unknown>, index: number): SceneSpec {
  * Returns null gracefully if the input is missing, malformed, or has no scenes.
  */
 export function parseDirectorBrief(raw: unknown, maxScenes: number): DirectorBrief | null {
-  // Accept raw strings — strip fences and think blocks before parsing
+  // Accept raw strings — salvage malformed/truncated JSON from the model.
   if (typeof raw === "string") {
-    const clean = raw
-      .replace(/<think>[\s\S]*?<\/think>/g, "")
-      .replace(/```(?:json)?\s*/gi, "")
-      .replace(/```\s*$/g, "")
-      .trim()
-    try {
-      raw = JSON.parse(clean)
-    } catch {
-      // Try brace-extraction as last resort
-      const first = clean.indexOf("{")
-      const last = clean.lastIndexOf("}")
-      if (first >= 0 && last > first) {
-        try { raw = JSON.parse(clean.slice(first, last + 1)) } catch { return null }
-      } else {
-        return null
-      }
-    }
+    raw = safeModelJsonObject(raw)
   }
 
   if (!raw || typeof raw !== "object") return null

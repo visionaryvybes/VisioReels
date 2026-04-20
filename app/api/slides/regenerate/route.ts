@@ -4,6 +4,7 @@ import path from "path";
 import sharp from "sharp";
 import { getPreset, SLIDE_PRESETS } from "@/lib/slide-presets";
 import { findBannedPhrases, sanitizeOneLine, sanitizeParagraph } from "@/lib/copy-guard";
+import { safeModelJsonObject } from "@/lib/json-repair";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -36,16 +37,6 @@ async function readImageBase64(relPath: string): Promise<string | null> {
   }
 }
 
-function extractJson(raw: string): unknown | null {
-  try { return JSON.parse(raw); } catch { /* fall through */ }
-  const first = raw.indexOf("{");
-  const last = raw.lastIndexOf("}");
-  if (first >= 0 && last > first) {
-    try { return JSON.parse(raw.slice(first, last + 1)); } catch { return null; }
-  }
-  return null;
-}
-
 function validateHex(s: string | undefined): string | undefined {
   if (!s) return undefined;
   const t = s.trim();
@@ -67,7 +58,7 @@ async function generateSlide(prompt: string, b64: string): Promise<SlideIn | nul
   if (!res.ok) throw new Error(`Ollama ${res.status}`);
   const json = await res.json();
   const raw = (json?.message?.content ?? "") as string;
-  return extractJson(raw) as SlideIn | null;
+  return safeModelJsonObject(raw) as SlideIn | null;
 }
 
 export async function POST(req: NextRequest) {

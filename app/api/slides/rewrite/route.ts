@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPreset, SLIDE_PRESETS } from "@/lib/slide-presets";
 import { findBannedPhrases, sanitizeOneLine, sanitizeParagraph } from "@/lib/copy-guard";
+import { safeModelJsonObject } from "@/lib/json-repair";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -20,16 +21,6 @@ const MODES = {
 
 type Mode = keyof typeof MODES;
 
-function extractJson(raw: string): unknown | null {
-  try { return JSON.parse(raw); } catch {}
-  const first = raw.indexOf("{");
-  const last = raw.lastIndexOf("}");
-  if (first >= 0 && last > first) {
-    try { return JSON.parse(raw.slice(first, last + 1)); } catch { return null; }
-  }
-  return null;
-}
-
 async function rewriteCopy(prompt: string): Promise<{ title?: string; body?: string } | null> {
   const res = await fetch(OLLAMA_URL, {
     method: "POST",
@@ -45,7 +36,7 @@ async function rewriteCopy(prompt: string): Promise<{ title?: string; body?: str
   if (!res.ok) throw new Error(`Ollama ${res.status}`);
   const j = await res.json();
   const raw = (j?.message?.content ?? "") as string;
-  return extractJson(raw) as { title?: string; body?: string } | null;
+  return safeModelJsonObject(raw) as { title?: string; body?: string } | null;
 }
 
 export async function POST(req: NextRequest) {
