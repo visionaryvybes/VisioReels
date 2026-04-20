@@ -2400,6 +2400,40 @@ async function resolveVoiceProfile(ttsVoice: string) {
   return resolveProfileForNarration(ttsVoice);
 }
 
+function normalizeNarrationForTTS(text: string): string {
+  return text
+    .replace(/[“”]/g, '"')
+    .replace(/\b(?:save this|save for later|follow for more|follow for pt ?2|comment your thoughts|link in bio)\b/gi, "")
+    .replace(/\b(?:vibe check|main character|it's giving|no cap|quiet luxury)\b/gi, "")
+    .replace(/^[\s\-–—:;,.]+|[\s\-–—:;,.]+$/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function estimateSpeechSeconds(text: string): number {
+  const words = text.split(/\s+/).filter(Boolean).length;
+  return words / 2.8;
+}
+
+function trimNarrationToFit(text: string, targetSeconds: number): string {
+  const clean = normalizeNarrationForTTS(text);
+  if (!clean) return "";
+  if (estimateSpeechSeconds(clean) <= targetSeconds * 1.15) return clean;
+
+  const sentences = clean
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (sentences.length > 1) {
+    const first = sentences[0];
+    if (estimateSpeechSeconds(first) <= targetSeconds * 1.15) return first;
+  }
+
+  const maxWords = Math.max(5, Math.floor(targetSeconds * 2.7));
+  const clipped = clean.split(/\s+/).slice(0, maxWords).join(" ").trim();
+  return clipped.replace(/[,:;]+$/g, "").trim();
+}
+
 async function generateSceneTTS(
   scenes: Array<{ caption: string; kicker?: string; narration?: string }>,
   componentName: string,
@@ -2409,6 +2443,7 @@ async function generateSceneTTS(
   captionTone?: string,
   motionFeel?: string,
   roastDelivery?: boolean,
+  sceneDurationSec?: number,
 ): Promise<string[]> {
   const publicDir = projectPath("public", "tts");
   fs.mkdirSync(publicDir, { recursive: true });
@@ -2424,12 +2459,13 @@ async function generateSceneTTS(
       sceneIndex: i,
       totalScenes: scenes.length,
     });
-    if (!text) { paths.push(""); continue; }
+    const prepared = trimNarrationToFit(text, sceneDurationSec ?? 2.8);
+    if (!prepared) { paths.push(""); continue; }
 
     const direction = buildVoiceDirection({
       captionTone: (captionTone ?? "social") as CaptionTone,
       motionFeel: (motionFeel ?? "smooth") as MotionFeel,
-      contentSeed: `${componentName}:${i}:${text}`,
+      contentSeed: `${componentName}:${i}:${prepared}`,
       roastDelivery: roastDelivery === true,
       sceneRole:
         i === 0
@@ -2445,7 +2481,7 @@ async function generateSceneTTS(
     const outputPath = path.join(publicDir, filename);
     onProgress(`TTS scene ${i + 1}/${scenes.length}…`);
 
-    const ok = await generateSpeech({ text, profileId, outputPath, engine, ...direction });
+    const ok = await generateSpeech({ text: prepared, profileId, outputPath, engine, ...direction });
     paths.push(ok ? `tts/${filename}` : "");
   }
   return paths;
@@ -2799,6 +2835,7 @@ export async function POST(req: NextRequest) {
               creative.captionTone,
               creative.motionFeel,
               hfRoast,
+              sceneLen / 30,
             );
             const narrated = hfNarrationPaths.filter(Boolean).length;
             send({
@@ -3045,6 +3082,7 @@ export async function POST(req: NextRequest) {
               creative.captionTone,
               creative.motionFeel,
               detectCreativeIntent(userMessage).isRoast,
+              sceneLen / 30,
             );
             const narrated = sceneTTSPaths.filter(Boolean).length;
             send({

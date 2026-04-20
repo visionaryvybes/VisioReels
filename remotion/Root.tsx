@@ -68,6 +68,9 @@ export const RemotionRoot: React.FC = () => {
           brandName: "VISIO●REEL",
           sceneLengthInFrames: 75,
           transitionLengthInFrames: 18,
+          theme: "impact",
+          motionFeel: "snappy",
+          transitionEnergy: "medium",
         }}
         calculateMetadata={({ props }) => {
           const p = props as unknown as CinematicReelProps;
@@ -96,6 +99,8 @@ export const RemotionRoot: React.FC = () => {
           height: 1920,
           sceneLengthInFrames: 90,
           transitionLengthInFrames: 12,
+          motionFeel: "snappy",
+          transitionEnergy: "medium",
         }}
         calculateMetadata={({ props }) => {
           const p = props as unknown as HtmlSlideVideoProps;

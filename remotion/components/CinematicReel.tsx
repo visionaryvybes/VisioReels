@@ -215,6 +215,8 @@ interface ResolvedScene {
   burnTo: Vec;
 }
 
+type SceneArchetype = "hero" | "detail" | "proof" | "quote" | "cta";
+
 /** Keeps single-word headlines from clipping — scales down until the longest word fits. */
 function fitCaptionFontSize(
   words: string[],
@@ -600,6 +602,68 @@ function sceneLayout(
   }
 }
 
+function sceneArchetypeFor(
+  theme: ReelThemeId,
+  sceneIndex: number,
+  sceneCount: number
+): SceneArchetype {
+  const isFirst = sceneIndex === 0;
+  const isLast = sceneIndex === sceneCount - 1;
+  if (isFirst) return "hero";
+  if (isLast) return "cta";
+  if (theme === "editorial" || theme === "manifesto") {
+    return sceneIndex % 3 === 0 ? "quote" : "detail";
+  }
+  if (theme === "swiss" || theme === "terminal") {
+    return sceneIndex % 2 === 0 ? "proof" : "detail";
+  }
+  return sceneIndex % 4 === 2 ? "quote" : sceneIndex % 2 === 0 ? "proof" : "detail";
+}
+
+function imageStyleForArchetype(archetype: SceneArchetype, frame: number, sceneLen: number) {
+  const clip = interpolate(frame, [0, 10, sceneLen], [0.94, 1, 1], {
+    extrapolateRight: "clamp",
+  });
+  switch (archetype) {
+    case "detail":
+      return {
+        imageScaleBoost: 0.08,
+        imageTranslateX: -6,
+        imageTranslateY: -2,
+        imageClipPath: `inset(${(1 - clip) * 18}% ${(1 - clip) * 8}% ${(1 - clip) * 10}% ${(1 - clip) * 20}% round 28px)`,
+      };
+    case "proof":
+      return {
+        imageScaleBoost: 0.02,
+        imageTranslateX: 0,
+        imageTranslateY: -1,
+        imageClipPath: `inset(${(1 - clip) * 8}% ${(1 - clip) * 8}% ${(1 - clip) * 18}% ${(1 - clip) * 8}% round 18px)`,
+      };
+    case "quote":
+      return {
+        imageScaleBoost: 0.12,
+        imageTranslateX: 4,
+        imageTranslateY: 0,
+        imageClipPath: "none",
+      };
+    case "cta":
+      return {
+        imageScaleBoost: 0.05,
+        imageTranslateX: 0,
+        imageTranslateY: 1,
+        imageClipPath: "none",
+      };
+    case "hero":
+    default:
+      return {
+        imageScaleBoost: 0,
+        imageTranslateX: 0,
+        imageTranslateY: 0,
+        imageClipPath: "none",
+      };
+  }
+}
+
 const SceneFrame: React.FC<{
   scene: ResolvedScene;
   sceneLen: number;
@@ -638,6 +702,8 @@ const SceneFrame: React.FC<{
   const layout = sceneLayout(theme, sceneIndex, sceneCount, width, height);
   const motion = motionWordProfile(motionFeel);
   const sceneAccent = accentForTheme(scene.accent, theme);
+  const archetype = sceneArchetypeFor(theme, sceneIndex, sceneCount);
+  const imageTreatment = imageStyleForArchetype(archetype, frame, sceneLen);
 
   const rawWords = scene.caption.split(/\s+/).filter(Boolean);
   const words = rawWords.length ? rawWords : [scene.caption];
@@ -678,8 +744,9 @@ const SceneFrame: React.FC<{
       {/* Hero image — full-bleed cover + Ken Burns + grade preset */}
       <AbsoluteFill
         style={{
-          transform: `scale(${scale}) translate(${tx}%, ${ty}%)`,
+          transform: `scale(${scale + imageTreatment.imageScaleBoost}) translate(${tx + imageTreatment.imageTranslateX}%, ${ty + imageTreatment.imageTranslateY}%)`,
           transformOrigin: "center center",
+          clipPath: imageTreatment.imageClipPath,
         }}
       >
         <Img
@@ -700,6 +767,51 @@ const SceneFrame: React.FC<{
           mixBlendMode: "soft-light",
         }}
       />
+
+      {archetype === "proof" ? (
+        <div
+          style={{
+            position: "absolute",
+            top: "9%",
+            right: "7%",
+            minWidth: width * 0.22,
+            padding: "14px 16px",
+            border: `1px solid ${sceneAccent}88`,
+            background: "rgba(0,0,0,0.42)",
+            backdropFilter: "blur(10px)",
+            color: "#fff",
+            fontFamily: kickerFontFamily,
+            zIndex: 5,
+            boxShadow: `0 0 24px ${sceneAccent}25`,
+          }}
+        >
+          <div style={{ fontSize: 12, letterSpacing: 3, opacity: 0.6, textTransform: "uppercase" }}>
+            Scene Read
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 8 }}>
+            {String(sceneIndex + 1).padStart(2, "0")}
+          </div>
+          <div style={{ fontSize: 12, marginTop: 4, opacity: 0.8 }}>
+            {scene.kicker || "Evidence block"}
+          </div>
+        </div>
+      ) : null}
+
+      {archetype === "quote" ? (
+        <div
+          style={{
+            position: "absolute",
+            left: "8%",
+            right: "8%",
+            top: "15%",
+            bottom: "18%",
+            border: "1px solid rgba(255,255,255,0.18)",
+            background: "linear-gradient(to bottom, rgba(0,0,0,0.36), rgba(0,0,0,0.56))",
+            backdropFilter: "blur(12px)",
+            zIndex: 4,
+          }}
+        />
+      ) : null}
 
       {/* Vignette */}
       <AbsoluteFill
@@ -747,80 +859,121 @@ const SceneFrame: React.FC<{
         />
       )}
 
-      {/* Caption — word-by-word spring reveal, bottom-anchored */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: layout.captionBottom,
-          left: layout.left,
-          right: layout.right,
-          display: "flex",
-          flexWrap: "wrap",
-          justifyContent: layout.justify,
-          alignItems: layout.alignItems,
-          gap: layout.wordGap,
-          padding: `0 ${layout.paddingX}px`,
-          maxWidth: layout.maxCaptionWidth,
-          width: layout.left === 0 && layout.right === 0 ? "100%" : undefined,
-          margin: layout.left === 0 && layout.right === 0 ? "0 auto" : undefined,
-          boxSizing: "border-box",
-          overflow: "hidden",
-        }}
-      >
-        {words.map((word, i) => {
-          const wordStart = motion.start + i * motion.stagger;
-          const wordY = interpolate(
-            frame,
-            [wordStart, wordStart + 18],
-            [motion.travel, 0],
-            {
-              extrapolateLeft: "clamp",
-              extrapolateRight: "clamp",
-              easing:
-                motionFeel === "dramatic"
-                  ? Easing.out(Easing.exp)
-                  : motionFeel === "dreamy"
-                    ? Easing.inOut(Easing.sin)
-                    : Easing.out(Easing.cubic),
-            }
-          );
-          const wordOp = interpolate(
-            frame,
-            [wordStart, wordStart + 14],
-            [0, 1],
-            {
-              extrapolateLeft: "clamp",
-              extrapolateRight: "clamp",
-            }
-          );
-          return (
-            <span
-              key={i}
-              style={{
-                display: "inline-block",
-                fontSize,
-                fontWeight: 900,
-                color: "#fff",
-                letterSpacing,
-                textTransform: layout.uppercase ? "uppercase" : "none",
-                fontFamily: captionFontFamily,
-                lineHeight: 1.05,
-                maxWidth: "100%",
-                wordBreak: "break-word",
-                textShadow:
-                  theme === "terminal"
-                    ? `0 0 14px ${sceneAccent}, 0 0 2px rgba(255,255,255,0.6)`
-                    : `0 4px 20px rgba(0,0,0,0.9), 0 0 2px ${sceneAccent}`,
-                transform: `translateY(${wordY}px)`,
-                opacity: wordOp,
-                WebkitTextStroke: layout.stroke,
-              }}
-            >
-              {word}
-            </span>
-          );
-        })}
-      </div>
+      {/* Caption */}
+      {archetype === "quote" ? (
+        <div
+          style={{
+            position: "absolute",
+            top: "23%",
+            left: "14%",
+            right: "14%",
+            zIndex: 6,
+            color: "#fff",
+          }}
+        >
+          <div
+            style={{
+              fontSize: Math.round(width * 0.12),
+              color: sceneAccent,
+              fontFamily: captionFontFamily,
+              lineHeight: 0.7,
+            }}
+          >
+            “
+          </div>
+          <div
+            style={{
+              fontSize: Math.round(fontSize * 0.92),
+              fontWeight: 800,
+              letterSpacing: layout.uppercase ? letterSpacing * 0.45 : 0,
+              textTransform: layout.uppercase ? "uppercase" : "none",
+              fontFamily: captionFontFamily,
+              lineHeight: 1.04,
+              textShadow: `0 4px 20px rgba(0,0,0,0.85)`,
+            }}
+          >
+            {scene.caption}
+          </div>
+        </div>
+      ) : (
+        <div
+          style={{
+            position: "absolute",
+            bottom: layout.captionBottom,
+            left: layout.left,
+            right: layout.right,
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: layout.justify,
+            alignItems: layout.alignItems,
+            gap: layout.wordGap,
+            padding: `0 ${layout.paddingX}px`,
+            maxWidth: layout.maxCaptionWidth,
+            width: layout.left === 0 && layout.right === 0 ? "100%" : undefined,
+            margin: layout.left === 0 && layout.right === 0 ? "0 auto" : undefined,
+            boxSizing: "border-box",
+            overflow: "hidden",
+            zIndex: 6,
+          }}
+        >
+          {words.map((word, i) => {
+            const wordStart = motion.start + i * motion.stagger;
+            const wordY = interpolate(
+              frame,
+              [wordStart, wordStart + 18],
+              [motion.travel, 0],
+              {
+                extrapolateLeft: "clamp",
+                extrapolateRight: "clamp",
+                easing:
+                  motionFeel === "dramatic"
+                    ? Easing.out(Easing.exp)
+                    : motionFeel === "dreamy"
+                      ? Easing.inOut(Easing.sin)
+                      : Easing.out(Easing.cubic),
+              }
+            );
+            const wordOp = interpolate(
+              frame,
+              [wordStart, wordStart + 14],
+              [0, 1],
+              {
+                extrapolateLeft: "clamp",
+                extrapolateRight: "clamp",
+              }
+            );
+            return (
+              <span
+                key={i}
+                style={{
+                  display: "inline-block",
+                  fontSize: archetype === "cta" ? Math.round(fontSize * 0.92) : fontSize,
+                  fontWeight: archetype === "detail" ? 800 : 900,
+                  color: "#fff",
+                  letterSpacing,
+                  textTransform: layout.uppercase ? "uppercase" : "none",
+                  fontFamily: captionFontFamily,
+                  lineHeight: 1.05,
+                  maxWidth: "100%",
+                  wordBreak: "break-word",
+                  textShadow:
+                    theme === "terminal"
+                      ? `0 0 14px ${sceneAccent}, 0 0 2px rgba(255,255,255,0.6)`
+                      : `0 4px 20px rgba(0,0,0,0.9), 0 0 2px ${sceneAccent}`,
+                  transform:
+                    archetype === "proof"
+                      ? `translateY(${wordY}px) translateX(${interpolate(frame, [wordStart, wordStart + 18], [-8, 0], { extrapolateRight: "clamp" })}px)`
+                      : `translateY(${wordY}px)`,
+                  opacity: wordOp,
+                  WebkitTextStroke: layout.stroke,
+                }}
+              >
+                {word}
+              </span>
+            );
+          })}
+        </div>
+      )}
 
       {/* Kicker subtitle — sits below caption in the safe zone */}
       {scene.kicker ? (
