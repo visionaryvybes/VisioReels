@@ -4,8 +4,10 @@ import { persist } from 'zustand/middleware';
 import type { ReelDecorId, ReelTypographyId } from '@/lib/reel-typography';
 import type { ConceptBrief } from '@/lib/concept-brief';
 import type { DirectorBrief } from '@/lib/director-brief';
+import type { PresetVoiceGroup } from '@/lib/voicebox';
 export type { ConceptBrief };
 export type { DirectorBrief };
+export type { PresetVoiceGroup };
 
 export type ActivePanel = 'ai' | 'media' | 'history';
 export type GenerationPhase =
@@ -152,8 +154,16 @@ interface EditorStore {
   // ── TTS / Voicebox ───────────────────────────────────────────────────────
   /** Enable AI narration via Voicebox TTS (http://localhost:17493). */
   useTTS: boolean;
-  /** Voicebox voice id / name to use for narration. */
+  /** Voicebox voice id / name to use for narration (backwards compat). */
   ttsVoice: string;
+  /** Specific preset voice_id selected in the voice picker, e.g. "af_bella". */
+  ttsVoiceId: string;
+  /** Gender filter for the voice picker. */
+  ttsGender: "female" | "male";
+  /** Accent filter for the voice picker. */
+  ttsAccent: string;
+  /** Preset voice groups loaded from /api/tts (client-side only, not persisted). */
+  ttsPresetVoices: PresetVoiceGroup[];
   /** Current TTS status message from the agent SSE stream. */
   ttsStatus: string | null;
   // actions
@@ -187,6 +197,10 @@ interface EditorStore {
   setDirectorBrief: (b: DirectorBrief | null) => void;
   setUseTTS: (v: boolean) => void;
   setTTSVoice: (v: string) => void;
+  setTTSVoiceId: (id: string) => void;
+  setTTSGender: (g: "female" | "male") => void;
+  setTTSAccent: (a: string) => void;
+  setTTSPresetVoices: (vs: PresetVoiceGroup[]) => void;
   setTTSStatus: (msg: string | null) => void;
   reset: () => void;
 }
@@ -206,7 +220,7 @@ const initialState = {
   attachments: [] as Attachment[],
   aspect: '9:16' as ReelAspect,
   pace: 'balanced' as ReelPace,
-  maxScenes: 6,
+  maxScenes: 12,
   useVision: true,
   visionNotes: [] as VisionNote[],
   motionFeel: 'snappy' as MotionFeel,
@@ -220,6 +234,10 @@ const initialState = {
   concept: null as ConceptBrief | null,
   useTTS: false,
   ttsVoice: 'default',
+  ttsVoiceId: 'af_alloy',
+  ttsGender: 'female' as "female" | "male",
+  ttsAccent: 'american',
+  ttsPresetVoices: [] as PresetVoiceGroup[],
   ttsStatus: null as string | null,
 };
 
@@ -389,6 +407,28 @@ export const useEditorStore = create<EditorStore>()(
           state.ttsVoice = v;
         }),
 
+      setTTSVoiceId: (id) =>
+        set((state) => {
+          state.ttsVoiceId = id;
+          // Keep legacy ttsVoice in sync so agent route also gets the right value
+          state.ttsVoice = id;
+        }),
+
+      setTTSGender: (g) =>
+        set((state) => {
+          state.ttsGender = g;
+        }),
+
+      setTTSAccent: (a) =>
+        set((state) => {
+          state.ttsAccent = a;
+        }),
+
+      setTTSPresetVoices: (vs) =>
+        set((state) => {
+          state.ttsPresetVoices = vs;
+        }),
+
       setTTSStatus: (msg) =>
         set((state) => {
           state.ttsStatus = msg;
@@ -427,6 +467,10 @@ export const useEditorStore = create<EditorStore>()(
         pipelineMode: state.pipelineMode,
         useTTS: state.useTTS,
         ttsVoice: state.ttsVoice,
+        ttsVoiceId: state.ttsVoiceId,
+        ttsGender: state.ttsGender,
+        ttsAccent: state.ttsAccent,
+        // ttsPresetVoices is intentionally NOT persisted — re-fetched on mount
       }),
     }
   )

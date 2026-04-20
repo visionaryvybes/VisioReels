@@ -1,5 +1,11 @@
 import React from "react";
 import { Composition } from "remotion";
+import { GLITCHRAW } from "./compositions/GLITCHRAW";
+import { GLITCHREEL } from "./compositions/GLITCHREEL";
+import { GlitchProtocol } from "./compositions/GlitchProtocol";
+import { UrbanDrift } from "./compositions/UrbanDrift";
+import { Momentum } from "./compositions/Momentum";
+import { NewVideo } from "./compositions/NewVideo";
 import { NeoFuturism } from "./compositions/NeoFuturism";
 import { ConcreteHorizon } from "./compositions/ConcreteHorizon";
 import { SummitView } from "./compositions/SummitView";
@@ -30,6 +36,11 @@ import { SystemOverload } from "./compositions/SystemOverload";
 import { NeonNoirDrive } from "./compositions/NeonNoirDrive";
 import { ArchitecturalNarrative } from "./compositions/ArchitecturalNarrative";
 import { ArchitecturalDreamscape } from "./compositions/ArchitecturalDreamscape";
+import { RoastingElvis } from "./compositions/RoastingElvis";
+import { DollhouseDread } from "./compositions/DollhouseDread";
+import { MondayWakeUpCall } from "./compositions/MondayWakeUpCall";
+import { RoastTheIcon } from "./compositions/RoastTheIcon";
+import { Reel420WakeUp } from "./compositions/Reel420WakeUp";
 import { Reel, DEFAULT_SCENES } from "./compositions/Reel";
 import {
   computeReelDuration,
@@ -129,6 +140,11 @@ export const RemotionRoot: React.FC = () => {
       <Composition id="NeonNoirDrive" component={NeonNoirDrive} durationInFrames={1348} fps={30} width={1080} height={1920} defaultProps={{}} />
       <Composition id="ArchitecturalNarrative" component={ArchitecturalNarrative} durationInFrames={1347} fps={30} width={1920} height={1080} defaultProps={{}} />
       <Composition id="ArchitecturalDreamscape" component={ArchitecturalDreamscape} durationInFrames={2702} fps={30} width={1920} height={1080} defaultProps={{}} />
+      <Composition id="RoastingElvis" component={RoastingElvis} durationInFrames={1346} fps={30} width={1080} height={1920} defaultProps={{}} />
+      <Composition id="DollhouseDread" component={DollhouseDread} durationInFrames={1352} fps={30} width={1080} height={1920} defaultProps={{}} />
+      <Composition id="MondayWakeUpCall" component={MondayWakeUpCall} durationInFrames={1352} fps={30} width={1080} height={1920} defaultProps={{}} />
+      <Composition id="RoastTheIcon" component={RoastTheIcon} durationInFrames={1354} fps={30} width={1080} height={1920} defaultProps={{}} />
+      <Composition id="Reel420WakeUp" component={Reel420WakeUp} durationInFrames={1348} fps={30} width={1080} height={1920} defaultProps={{}} />
     </>
   );
 };

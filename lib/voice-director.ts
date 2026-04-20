@@ -21,8 +21,10 @@ export function buildVoiceDirection(opts: {
   captionTone: CaptionTone;
   motionFeel: MotionFeel;
   contentSeed?: string; // hash source for reproducibility (e.g. componentName)
+  /** Comedy roast: drier, more side-eye delivery — not corporate narrator */
+  roastDelivery?: boolean;
 }): VoiceDirection {
-  const { captionTone, motionFeel, contentSeed } = opts;
+  const { captionTone, motionFeel, contentSeed, roastDelivery } = opts;
 
   // Derive a stable numeric seed from the content identifier
   // Same content → same seed → same voice performance every render
@@ -48,7 +50,12 @@ export function buildVoiceDirection(opts: {
     dreamy: " Slightly soft and ethereal. Like narrating a dream.",
   };
 
-  const instruct = (toneInstructs[captionTone] + motionModifiers[motionFeel]).slice(0, 500);
+  let instruct = (toneInstructs[captionTone] + motionModifiers[motionFeel]).slice(0, 500);
+  if (roastDelivery) {
+    instruct =
+      ("Dry comedy roast. Side-eye energy, slightly deadpan; never corporate or motivational. " +
+        instruct).slice(0, 500);
+  }
 
   // Crossfade: cinematic tones get longer crossfade, hype gets snappier cuts
   const crossfade_ms = captionTone === "storytelling" || motionFeel === "dreamy" ? 80

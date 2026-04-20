@@ -18,6 +18,7 @@ import {
   type VisionNote,
   type ConceptBrief,
   type DirectorBrief,
+  type PresetVoiceGroup,
 } from '@/stores/editor-store';
 import { useProjectStore } from '@/stores/project-store';
 import { useTimelineStore } from '@/stores/timeline-store';
@@ -29,6 +30,45 @@ import {
   type ReelDecorId,
 } from '@/lib/reel-typography';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// ── Voice picker constants ──────────────────────────────────────────────────
+
+const ACCENT_FLAGS: Record<string, string> = {
+  american: '🇺🇸',
+  british: '🇬🇧',
+  spanish: '🇪🇸',
+  french: '🇫🇷',
+  hindi: '🇮🇳',
+  other: '🌍',
+};
+
+/** Used when Voicebox is online but hasn't returned preset data yet (or for offline fallback display). */
+const FALLBACK_VOICE_GROUPS: PresetVoiceGroup[] = [
+  { label: 'American Female', gender: 'female', accent: 'american', voices: [
+    { id: 'af_alloy', name: 'Alloy' }, { id: 'af_aoede', name: 'Aoede' }, { id: 'af_bella', name: 'Bella' },
+    { id: 'af_heart', name: 'Heart' }, { id: 'af_jessica', name: 'Jessica' }, { id: 'af_kore', name: 'Kore' },
+    { id: 'af_nicole', name: 'Nicole' }, { id: 'af_nova', name: 'Nova' }, { id: 'af_river', name: 'River' },
+    { id: 'af_sarah', name: 'Sarah' }, { id: 'af_sky', name: 'Sky' },
+  ]},
+  { label: 'American Male', gender: 'male', accent: 'american', voices: [
+    { id: 'am_adam', name: 'Adam' }, { id: 'am_echo', name: 'Echo' }, { id: 'am_eric', name: 'Eric' },
+    { id: 'am_fenrir', name: 'Fenrir' }, { id: 'am_liam', name: 'Liam' }, { id: 'am_michael', name: 'Michael' },
+    { id: 'am_onyx', name: 'Onyx' }, { id: 'am_puck', name: 'Puck' }, { id: 'am_santa', name: 'Santa' },
+  ]},
+  { label: 'British Female', gender: 'female', accent: 'british', voices: [
+    { id: 'bf_alice', name: 'Alice' }, { id: 'bf_emma', name: 'Emma' }, { id: 'bf_isabella', name: 'Isabella' }, { id: 'bf_lily', name: 'Lily' },
+  ]},
+  { label: 'British Male', gender: 'male', accent: 'british', voices: [
+    { id: 'bm_daniel', name: 'Daniel' }, { id: 'bm_fable', name: 'Fable' }, { id: 'bm_george', name: 'George' }, { id: 'bm_lewis', name: 'Lewis' },
+  ]},
+  { label: 'Spanish Female', gender: 'female', accent: 'spanish', voices: [{ id: 'ef_dora', name: 'Dora' }]},
+  { label: 'Spanish Male', gender: 'male', accent: 'spanish', voices: [{ id: 'em_alex', name: 'Alex' }]},
+  { label: 'French Female', gender: 'female', accent: 'french', voices: [{ id: 'ff_siwis', name: 'Siwis' }]},
+  { label: 'Hindi Female', gender: 'female', accent: 'hindi', voices: [{ id: 'hf_alpha', name: 'Alpha' }, { id: 'hf_beta', name: 'Beta' }]},
+  { label: 'Hindi Male', gender: 'male', accent: 'hindi', voices: [{ id: 'hm_omega', name: 'Omega' }, { id: 'hm_psi', name: 'Psi' }]},
+];
+
+// ── Style chips ─────────────────────────────────────────────────────────────
 
 const STYLE_CHIPS = [
   'RAW',
@@ -66,7 +106,12 @@ export function AIPanel() {
     pipelineMode, setPipelineMode,
     concept, setConcept,
     directorBrief, setDirectorBrief,
-    useTTS, setUseTTS, ttsVoice, setTTSVoice, ttsStatus, setTTSStatus,
+    useTTS, setUseTTS, ttsVoice, setTTSVoice,
+    ttsVoiceId, setTTSVoiceId,
+    ttsGender, setTTSGender,
+    ttsAccent, setTTSAccent,
+    ttsPresetVoices, setTTSPresetVoices,
+    ttsStatus, setTTSStatus,
   } = useEditorStore();
 
   const { setComposition } = useProjectStore();
@@ -103,11 +148,21 @@ export function AIPanel() {
   useEffect(() => {
     if (!useTTS) return;
     setVbRunning(null);
-    fetch('/api/tts').then(r => r.json()).then((d: { running: boolean; profiles: { id: string; name: string }[] }) => {
-      setVbRunning(d.running);
-      setVbProfiles(d.profiles ?? []);
-      if (d.profiles?.length && ttsVoice === 'default') setTTSVoice(d.profiles[0].id);
-    }).catch(() => setVbRunning(false));
+    fetch('/api/tts')
+      .then(r => r.json())
+      .then((d: { running: boolean; profiles: { id: string; name: string }[]; presetVoices: PresetVoiceGroup[] }) => {
+        setVbRunning(d.running);
+        setVbProfiles(d.profiles ?? []);
+        if (d.presetVoices?.length) {
+          setTTSPresetVoices(d.presetVoices);
+        }
+        // If still at default and we got preset voices, keep ttsVoiceId as-is (already "af_alloy")
+        // Only fall back to a profile id if there are no preset voices
+        if (d.profiles?.length && !d.presetVoices?.length && ttsVoice === 'default') {
+          setTTSVoice(d.profiles[0].id);
+        }
+      })
+      .catch(() => setVbRunning(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useTTS]);
 
@@ -179,7 +234,7 @@ export function AIPanel() {
           reelTypography,
           reelDecor,
           useTTS,
-          ttsVoice,
+          ttsVoice: ttsVoiceId,
         }),
       });
       if (!res.ok) {
@@ -298,7 +353,16 @@ export function AIPanel() {
           } catch { /* ignore */ }
         }
       }
-    } catch (e: unknown) { stopTimer(); setError(e instanceof Error ? e.message : 'An error occurred'); }
+    } catch (e: unknown) {
+      stopTimer();
+      let msg = e instanceof Error ? e.message : 'An error occurred';
+      if (/failed to fetch|network|chunk|incomplete|aborted|load failed|reset/i.test(msg)) {
+        msg =
+          'Agent stream interrupted before completion. Keep `ollama serve` running with your model loaded, avoid restarting the Next dev server during a long generation, and retry. ' +
+          (msg ? `(${msg})` : '');
+      }
+      setError(msg);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prompt, isGenerating, selectedChips, attachments, aspect, pace, maxScenes, useVision, motionFeel, captionTone, transitionEnergy, targetDurationSec, reelTypography, reelDecor, pipelineMode, useTTS, ttsVoice, setCompositionInputProps, setConcept, setDirectorBrief]);
 
@@ -693,8 +757,9 @@ export function AIPanel() {
       </Section>
 
       {/* TTS / Voicebox narration */}
-      <Section label="VOICE" hint="Voicebox TTS — reads Gemma’s scene/slide copy aloud. No saved voice? A preset narrator is created automatically.">
+      <Section label="VOICE" hint="Voicebox TTS — reads Gemma's scene/slide copy aloud. Pick a preset voice or it will auto-create a narrator.">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* Enable toggle row */}
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 10, fontFamily: 'var(--font-dm-mono), monospace', color: '#aaa', letterSpacing: '0.08em', cursor: isGenerating ? 'not-allowed' : 'pointer' }}>
             <input
               type="checkbox"
@@ -716,56 +781,149 @@ export function AIPanel() {
             )}
           </label>
 
-          {useTTS && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <div style={{ fontSize: 9, color: '#555', fontFamily: 'var(--font-dm-mono), monospace', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Voice Profile</div>
-              {vbProfiles.length > 0 ? (
-                <select
-                  value={ttsVoice}
-                  onChange={(e) => setTTSVoice(e.target.value)}
-                  disabled={isGenerating}
-                  style={{
-                    background: '#060606',
-                    border: '1px solid #1a1a1a',
-                    color: '#ccff00',
-                    fontFamily: 'var(--font-dm-mono), monospace',
-                    fontSize: 10,
-                    padding: '7px 10px',
-                    outline: 'none',
-                    width: '100%',
-                    letterSpacing: '0.06em',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {vbProfiles.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={ttsVoice}
-                  onChange={(e) => setTTSVoice(e.target.value)}
-                  disabled={isGenerating}
-                  placeholder={vbRunning === false ? 'voicebox not running' : 'profile name or id'}
-                  style={{
-                    background: '#060606',
-                    border: `1px solid ${vbRunning === false ? '#3a1a1a' : '#1a1a1a'}`,
-                    color: vbRunning === false ? '#555' : '#ccff00',
-                    fontFamily: 'var(--font-dm-mono), monospace',
-                    fontSize: 10,
-                    padding: '7px 10px',
-                    outline: 'none',
-                    width: '100%',
-                    letterSpacing: '0.06em',
-                  }}
-                />
-              )}
-              {vbRunning === false && (
-                <div style={{ fontSize: 9, color: '#ff4444', fontFamily: 'var(--font-dm-mono), monospace', letterSpacing: '0.06em', lineHeight: 1.5 }}>
-                  Start Voicebox → run: <span style={{ color: '#888' }}>python -m backend.main</span>
+          {/* Voice picker — only when enabled + Voicebox is running */}
+          {useTTS && vbRunning === true && (() => {
+            // Compute which groups match the current gender filter
+            const sourceGroups: PresetVoiceGroup[] = ttsPresetVoices.length > 0
+              ? ttsPresetVoices
+              : FALLBACK_VOICE_GROUPS;
+
+            const genderGroups = sourceGroups.filter(g => g.gender === ttsGender);
+            const accentGroups = genderGroups.filter(g => g.accent === ttsAccent);
+            // Find the group matching current gender+accent (or first group for that gender)
+            const activeGroup = accentGroups[0] ?? genderGroups[0] ?? sourceGroups[0] ?? null;
+            const voiceChips = activeGroup?.voices ?? [];
+
+            // Derive display name + label for selected voice
+            const allVoices = sourceGroups.flatMap(g => g.voices.map(v => ({ ...v, gender: g.gender, accent: g.accent, label: g.label })));
+            const selectedVoiceMeta = allVoices.find(v => v.id === ttsVoiceId);
+            const selectedName = selectedVoiceMeta?.name ?? ttsVoiceId;
+            const selectedLabel = selectedVoiceMeta?.label ?? '';
+
+            // All accents available for current gender
+            const availableAccents = [...new Set(genderGroups.map(g => g.accent))];
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {/* Gender toggle */}
+                <div style={{ display: 'flex', gap: 5 }}>
+                  {(['female', 'male'] as const).map(g => {
+                    const active = ttsGender === g;
+                    return (
+                      <button
+                        key={g}
+                        onClick={() => {
+                          setTTSGender(g);
+                          // Auto-pick first voice for new gender if current voice doesn't match
+                          const newGenderGroups = sourceGroups.filter(gr => gr.gender === g);
+                          const newAccentGroup = newGenderGroups.find(gr => gr.accent === ttsAccent) ?? newGenderGroups[0];
+                          const firstVoice = newAccentGroup?.voices[0];
+                          if (firstVoice && !newGenderGroups.flatMap(gr => gr.voices).some(v => v.id === ttsVoiceId)) {
+                            setTTSVoiceId(firstVoice.id);
+                          }
+                        }}
+                        disabled={isGenerating}
+                        style={{
+                          padding: '5px 12px',
+                          borderRadius: '100px',
+                          border: `1px solid ${active ? '#7c3aed' : '#222'}`,
+                          background: active ? 'rgba(124,58,237,0.15)' : 'transparent',
+                          color: active ? '#a78bfa' : '#555',
+                          fontSize: 9,
+                          fontFamily: 'var(--font-dm-mono), monospace',
+                          letterSpacing: '0.08em',
+                          cursor: isGenerating ? 'not-allowed' : 'pointer',
+                          textTransform: 'uppercase',
+                          fontWeight: active ? 700 : 400,
+                        }}
+                      >
+                        {g === 'female' ? '♀ FEMALE' : '♂ MALE'}
+                      </button>
+                    );
+                  })}
                 </div>
-              )}
+
+                {/* Accent chips */}
+                {availableAccents.length > 1 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {availableAccents.map(acc => {
+                      const active = ttsAccent === acc;
+                      const flag = ACCENT_FLAGS[acc] ?? '🌍';
+                      return (
+                        <button
+                          key={acc}
+                          onClick={() => {
+                            setTTSAccent(acc);
+                            // Auto-select first voice for new accent
+                            const newGroup = genderGroups.find(g => g.accent === acc);
+                            const firstVoice = newGroup?.voices[0];
+                            if (firstVoice && !newGroup?.voices.some(v => v.id === ttsVoiceId)) {
+                              setTTSVoiceId(firstVoice.id);
+                            }
+                          }}
+                          disabled={isGenerating}
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: '100px',
+                            border: `1px solid ${active ? '#7c3aed' : '#222'}`,
+                            background: active ? 'rgba(124,58,237,0.15)' : 'transparent',
+                            color: active ? '#a78bfa' : '#555',
+                            fontSize: 9,
+                            fontFamily: 'var(--font-dm-mono), monospace',
+                            letterSpacing: '0.06em',
+                            cursor: isGenerating ? 'not-allowed' : 'pointer',
+                            textTransform: 'capitalize',
+                          }}
+                        >
+                          {flag} {acc.charAt(0).toUpperCase() + acc.slice(1)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Voice name grid */}
+                {voiceChips.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {voiceChips.map(v => {
+                      const active = ttsVoiceId === v.id;
+                      return (
+                        <button
+                          key={v.id}
+                          onClick={() => setTTSVoiceId(v.id)}
+                          disabled={isGenerating}
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: '100px',
+                            border: `1px solid ${active ? '#ccff00' : '#222'}`,
+                            background: active ? 'rgba(204,255,0,0.1)' : 'transparent',
+                            color: active ? '#ccff00' : '#666',
+                            fontSize: 9,
+                            fontFamily: 'var(--font-dm-mono), monospace',
+                            letterSpacing: '0.06em',
+                            cursor: isGenerating ? 'not-allowed' : 'pointer',
+                            fontWeight: active ? 700 : 400,
+                          }}
+                        >
+                          {v.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Selected voice summary */}
+                <div style={{ fontSize: 9, color: '#555', fontFamily: 'var(--font-dm-mono), monospace', letterSpacing: '0.06em' }}>
+                  🎙 {selectedName}{selectedLabel ? ` · ${selectedLabel}` : ''} · kokoro
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Offline fallback — show when enabled but VB is not running */}
+          {useTTS && vbRunning === false && (
+            <div style={{ fontSize: 9, color: '#ff4444', fontFamily: 'var(--font-dm-mono), monospace', letterSpacing: '0.06em', lineHeight: 1.5 }}>
+              Start Voicebox → run: <span style={{ color: '#888' }}>scripts/start-voicebox.sh</span>
             </div>
           )}
 
@@ -819,7 +977,7 @@ export function AIPanel() {
           }}
         />
         <p style={{ margin: 0, padding: '0 16px 10px', fontSize: 9, color: '#555', fontFamily: 'var(--font-dm-mono), monospace', lineHeight: 1.45 }}>
-          Without media: full Remotion + SVG power (graphs, grids, typography). Attach images for the cinematic reel path. Say “photo” or “Unsplash” if you want stock imagery.
+          Without media: full Remotion + SVG power (graphs, grids, typography). Attach images for the cinematic reel path. Say "photo" or "Unsplash" if you want stock imagery.
         </p>
         <div style={{ display: 'flex', borderTop: '1px solid #333', padding: '12px 16px', justifyContent: 'space-between', alignItems: 'center', background: '#050505' }}>
           <button
@@ -856,11 +1014,11 @@ export function AIPanel() {
       <AnimatePresence>
         {attachments.length > 0 && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 8 }}>
-            {attachments.map(a => {
+            {attachments.map((a, i) => {
               const note = visionByPath.get(a.path);
               return (
                 <div key={a.path} style={{ position: 'relative', aspectRatio: '1', overflow: 'hidden', border: `1px solid ${note ? '#ccff00' : '#333'}`, background: '#000', minWidth: 0 }}>
-                  <Image src={a.url} alt={a.name} fill style={{ objectFit: 'cover' }} unoptimized />
+                  <Image src={a.url} alt={a.name} fill style={{ objectFit: 'cover' }} unoptimized priority={i === 0} />
                   {note?.subject && (
                     <div
                       title={note.subject}

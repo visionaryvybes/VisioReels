@@ -134,7 +134,34 @@ function sanitizeScene(raw: Record<string, unknown>, index: number): SceneSpec {
   }
 }
 
+/**
+ * Parse a DirectorBrief from either:
+ *   - an already-parsed object (from safeJson)
+ *   - a raw string (Gemma output with possible ```json fences or <think> blocks)
+ * Returns null gracefully if the input is missing, malformed, or has no scenes.
+ */
 export function parseDirectorBrief(raw: unknown, maxScenes: number): DirectorBrief | null {
+  // Accept raw strings — strip fences and think blocks before parsing
+  if (typeof raw === "string") {
+    const clean = raw
+      .replace(/<think>[\s\S]*?<\/think>/g, "")
+      .replace(/```(?:json)?\s*/gi, "")
+      .replace(/```\s*$/g, "")
+      .trim()
+    try {
+      raw = JSON.parse(clean)
+    } catch {
+      // Try brace-extraction as last resort
+      const first = clean.indexOf("{")
+      const last = clean.lastIndexOf("}")
+      if (first >= 0 && last > first) {
+        try { raw = JSON.parse(clean.slice(first, last + 1)) } catch { return null }
+      } else {
+        return null
+      }
+    }
+  }
+
   if (!raw || typeof raw !== "object") return null
   const obj = raw as Record<string, unknown>
   if (!obj.title || !obj.logline) return null

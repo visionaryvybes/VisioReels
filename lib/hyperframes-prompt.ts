@@ -72,10 +72,27 @@ export function buildHyperframesSlidesStagingBlock(): string {
 }
 
 /**
- * Image reels: more scenes than uploads — reuse paths with different copy/angles (not a 1:1 slideshow).
+ * Image reels: remix beats vs strict one-scene-per-photo (roasts, slideshows).
  */
-export function buildReelRemixDirective(imageCount: number, maxScenes: number): string {
+export function buildReelRemixDirective(
+  imageCount: number,
+  maxScenes: number,
+  opts?: { oneScenePerImage?: boolean }
+): string {
   const cap = Math.max(2, Math.min(24, maxScenes));
+  const strict =
+    opts?.oneScenePerImage === true ||
+    (imageCount > 1 && cap === imageCount);
+
+  if (strict && imageCount > 0) {
+    return `═══ ONE SCENE PER IMAGE (mandatory) ═══
+- The user uploaded ${imageCount} images. Output exactly ${imageCount} scenes — no more, no less.
+- Scene order matches the image list: scene 1.src = first path, scene 2.src = second path, … in that order.
+- Each "src" appears exactly once. Do not repeat paths. Do not skip an image.
+- Each caption/roast must reference what is visible in THAT photo only.
+`;
+  }
+
   const target =
     imageCount <= 0
       ? cap

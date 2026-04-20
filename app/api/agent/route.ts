@@ -22,11 +22,20 @@ import { computeHtmlSlideVideoDuration } from "@/lib/html-slide-duration";
 import type { ConceptBrief } from "@/lib/concept-brief";
 import { parseDirectorBrief, briefToConceptCompat, type DirectorBrief } from "@/lib/director-brief";
 import { buildContextQueries, fetchWebContext, formatWebContext } from "@/lib/web-context";
-import { generateSpeech, resolveProfileForNarration } from "@/lib/voicebox";
+import {
+  BRAIN_CREATIVE_DIRECTIVES,
+  FREEFORM_CODE_CREATIVE_DIRECTIVES,
+  GEMMA_JSON_CREATIVE_DIRECTIVES,
+  HTML_SLIDES_CREATIVE_DIRECTIVES,
+} from "@/lib/agent-creative-directives";
+import { generateSpeech, resolveProfileForNarration, ensurePresetProfile } from "@/lib/voicebox";
 import { buildVoiceDirection, buildNarrationText, type CaptionTone, type MotionFeel } from "@/lib/voice-director";
 import { buildCulturalContext, type Platform } from "@/lib/cultural-context";
 
-const PROJECT_DIR = process.cwd();
+/** Repo-root paths for fs I/O. turbopackIgnore prevents NFT from tracing all of process.cwd(). */
+function projectPath(...parts: string[]): string {
+  return path.join(/* turbopackIgnore: true */ process.cwd(), ...parts);
+}
 const OLLAMA_BASE = (process.env.OLLAMA_URL ?? "http://localhost:11434").replace(/\/$/, "");
 const OLLAMA_URL = `${OLLAMA_BASE}/api/chat`;
 const MODEL = process.env.OLLAMA_MODEL ?? "visio-gemma";
@@ -54,14 +63,37 @@ function wantsPhotoBackgrounds(r: string): boolean {
 
 // ── Ollama streaming ──────────────────────────────────────────────────────────
 
+// Streaming timeout: default for reel JSON / short jobs. Hyperframes & freeform pass explicit timeoutMs.
+const STREAM_TIMEOUT_MS = 180_000;
+
+const IS_VERCEL_DEPLOY = Boolean(process.env.VERCEL);
+/** Keep stream waits below route maxDuration (300s) minus vision, brain, and PNG render. */
+const STREAM_CEILING_MS = IS_VERCEL_DEPLOY ? 278_000 : 900_000;
+
+/** HTML slides: each block repeats fonts + full-bleed layout — allow much more wall time than default. */
+function htmlSlideStreamTimeoutMs(slideCap: number, numPredict: number): number {
+  const nSlides = Math.max(1, Math.min(24, Math.round(Number(slideCap) || 1)));
+  const np = Math.max(512, Math.min(16_384, Math.round(Number(numPredict) || 4096)));
+  const bySlides = 90_000 + nSlides * 62_000;
+  const byPredict = Math.floor(np / 2048) * 28_000;
+  const want = Math.max(180_000, bySlides + byPredict);
+  return Math.min(STREAM_CEILING_MS, want);
+}
+
 async function streamOllama(
   prompt: string,
   onToken: (t: string) => void,
-  opts: { temperature?: number; num_predict?: number } = {}
+  opts: { temperature?: number; num_predict?: number; timeoutMs?: number } = {}
 ): Promise<string> {
+  const timeoutMs =
+    typeof opts.timeoutMs === "number" && opts.timeoutMs >= 15_000 ? opts.timeoutMs : STREAM_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
   const call = (model: string) =>
     fetch(OLLAMA_URL, {
       method: "POST",
+      signal: controller.signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model,
@@ -74,36 +106,52 @@ async function streamOllama(
           num_ctx: 16384,
           num_predict: opts.num_predict ?? 4096,
           num_thread: 8,
-          repeat_penalty: 1.15,
+          repeat_penalty: 1.18,
         },
       }),
+    }).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("ECONNREFUSED") || msg.includes("fetch failed") || msg.includes("Failed to fetch")) {
+        throw new Error(`Ollama is offline — start it with: ollama serve`);
+      }
+      throw err;
     });
 
-  let res = await call(MODEL);
-  if (res.status === 404 && FALLBACK_MODEL && FALLBACK_MODEL !== MODEL) {
-    res = await call(FALLBACK_MODEL);
-  }
-  if (!res.ok || !res.body) throw new Error(`Ollama ${res.status}`);
-
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let full = "";
-  let buf = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const lines = buf.split("\n");
-    buf = lines.pop() ?? "";
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const tok = JSON.parse(line)?.message?.content ?? "";
-        if (tok) { full += tok; onToken(tok); }
-      } catch { /* skip */ }
+  try {
+    let res = await call(MODEL);
+    if (res.status === 404 && FALLBACK_MODEL && FALLBACK_MODEL !== MODEL) {
+      res = await call(FALLBACK_MODEL);
     }
+    if (!res.ok || !res.body) throw new Error(`Ollama HTTP ${res.status} — model may be missing or Ollama crashed`);
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let full = "";
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const tok = JSON.parse(line)?.message?.content ?? "";
+          if (tok) { full += tok; onToken(tok); }
+        } catch { /* skip malformed chunk */ }
+      }
+    }
+    return full.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("aborted") || msg.includes("AbortError")) {
+      throw new Error(`Ollama timed out after ${timeoutMs / 1000}s — reduce num_predict or try a shorter prompt`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  return full.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -289,7 +337,7 @@ function rgbToHex(r: number, g: number, b: number): string {
 }
 
 async function analyzeImage(relPath: string, name: string): Promise<ImageStats | null> {
-  const full = path.join(PROJECT_DIR, "public", relPath);
+  const full = projectPath("public", relPath);
   if (!fs.existsSync(full)) return null;
   try {
     const img = sharp(full);
@@ -322,19 +370,25 @@ interface ChatMessage {
   images?: string[];
 }
 
+// Timeout for non-streaming (brain/vision) calls: 60s should be ample for JSON responses.
+const CHAT_TIMEOUT_MS = 60_000;
+
 async function callOllamaChat(messages: ChatMessage[], jsonMode: boolean): Promise<string> {
   // NOTE: Do NOT set think:false with format:"json" — Gemma 4 silently ignores the
   // format constraint when think is disabled (Ollama bug #15260). Omit think entirely
   // so JSON mode works correctly. Strip any <think>...</think> blocks in post-processing.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+
   const payload = {
     messages,
     stream: false,
     ...(jsonMode ? { format: "json" } : {}),
     options: {
-      temperature: 0.4,
-      top_p: 0.9,
-      top_k: 40,
-      repeat_penalty: 1.15,
+      temperature: 0.22,
+      top_p: 0.85,
+      top_k: 32,
+      repeat_penalty: 1.22,
       num_ctx: 16384,
       num_predict: 900,
     },
@@ -342,16 +396,34 @@ async function callOllamaChat(messages: ChatMessage[], jsonMode: boolean): Promi
   const call = (model: string) =>
     fetch(OLLAMA_URL, {
       method: "POST",
+      signal: controller.signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...payload, model }),
+    }).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("ECONNREFUSED") || msg.includes("fetch failed") || msg.includes("Failed to fetch")) {
+        throw new Error(`Ollama is offline — start it with: ollama serve`);
+      }
+      throw err;
     });
-  let res = await call(MODEL);
-  if (res.status === 404 && FALLBACK_MODEL && FALLBACK_MODEL !== MODEL) res = await call(FALLBACK_MODEL);
-  if (!res.ok) throw new Error(`Ollama ${res.status}`);
-  const j = (await res.json()) as { message?: { content?: string } };
-  // Strip <think>...</think> blocks that Gemma 4 emits in thinking mode
-  const raw = j.message?.content ?? "";
-  return raw.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+
+  try {
+    let res = await call(MODEL);
+    if (res.status === 404 && FALLBACK_MODEL && FALLBACK_MODEL !== MODEL) res = await call(FALLBACK_MODEL);
+    if (!res.ok) throw new Error(`Ollama HTTP ${res.status} — model may be missing or Ollama crashed`);
+    const j = (await res.json()) as { message?: { content?: string } };
+    // Strip <think>...</think> blocks that Gemma 4 emits in thinking mode
+    const raw = j.message?.content ?? "";
+    return raw.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("aborted") || msg.includes("AbortError")) {
+      throw new Error(`Ollama timed out after ${CHAT_TIMEOUT_MS / 1000}s — brain/vision pass is taking too long`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ── Brain / Director pass ─────────────────────────────────────────────────────
@@ -373,34 +445,147 @@ AVAILABLE REMOTION PRIMITIVES (import from "../components/primitives"):
   NoiseLayer       — animated film grain using @remotion/noise; props: opacity, speed, scale, blendMode("overlay"|"screen"|"multiply"), seed
 `.trim();
 
+/**
+ * Detects the creative intent from the user's brief — roast, comedy, hype,
+ * motivation, tutorial, etc. Returns structured intent metadata for prompt injection.
+ */
+function detectCreativeIntent(brief: string): {
+  isRoast: boolean;
+  isComedy: boolean;
+  isMotivation: boolean;
+  isTutorial: boolean;
+  isHype: boolean;
+  subjectName: string | null;
+  intentLabel: string;
+  toneGuidance: string;
+  arcOverride: string | null;
+} {
+  const b = brief.toLowerCase();
+  const isRoast =
+    /\broast\b|\bsavage\b|\bno\s+mercy\b|\bclown\b|\bclown on\b|\bdrag\b|\bcall.*out\b|\bputs.*on.*blast\b|\bexpose\b|\btake.*down\b|\bmake fun of\b|\bether\b|\bdiss\b/.test(
+      b
+    );
+  const isComedy = isRoast || /\bfunny\b|\bhilarious\b|\bcringe\b|\bmeme\b|\bjoke\b|\bcomic\b|\bsatire\b/.test(b);
+  // Don't tag "motivation" when this is clearly a roast — avoids "Monday wake up" + roast fighting tone
+  const isMotivation =
+    !isRoast &&
+    /\bmotivat\b|\binspir\b|\bhustle\b|\bgrind\b|\brise\b|\bwake.*up\b|\bpep.*talk\b/.test(b);
+  const isTutorial = /\bhow to\b|\bstep\b|\bguide\b|\btutorial\b|\blearn\b|\btips?\b/.test(b);
+  const isHype = !isRoast && !isTutorial && /\bhype\b|\bfire\b|\blit\b|\bbang\b|\bbanger\b/.test(b);
+
+  // Name: "roast a guy named elvis", "roast Elvis", "roast my friend Elvis"
+  let subjectName: string | null = null;
+  const namePatterns = [
+    /\broast(?:ing)?\s+(?:a\s+)?(?:guy|dude|man|woman|girl|person|friend|homie|bro|sis)\s+named\s+([A-Za-z][A-Za-z'-]*)/i,
+    /\broast(?:ing)?\s+(?:a\s+)?(?:guy|dude|man|woman|girl|person|friend)\s+called\s+([A-Za-z][A-Za-z'-]*)/i,
+    /\broast\s+my\s+friend\s+([A-Za-z][A-Za-z'-]*)/i,
+    /\broast(?:ing)?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/,
+    /\broast(?:ing)?\s+([a-z][a-z]+)\b/i,
+  ];
+  for (const p of namePatterns) {
+    const m = brief.match(p);
+    if (m?.[1] && !/^(a|the|this|that|him|her|them|someone)$/i.test(m[1])) {
+      subjectName = m[1].trim();
+      break;
+    }
+  }
+
+  let intentLabel = "general";
+  let toneGuidance = "";
+  let arcOverride: string | null = null;
+
+  if (isRoast) {
+    intentLabel = "roast";
+    const name = subjectName ?? "them";
+    toneGuidance = `THIS IS A ROAST VIDEO. You are roasting ${name}. Every headline must be a savage, funny, SPECIFIC observation about what you literally see in that photo (outfit, face, doll/plastic look, car interior, cigarette, hair, expression).
+ROAST RULES:
+- Find the most embarrassing, funny, or absurd VISUAL detail and write ABOUT THAT — not about "work" or "Monday motivation"
+- Use roast language: "bro", "nah", "sir", "ma'am", "the audacity", "we need to talk", "nobody:", "POV:", "bestie no", "tell me why"
+- Forbidden vocabulary (startup / LinkedIn brain): deploy, sprint, iterate, throughput, PMF, refactor, MVP, latency, pipeline, stakeholder, retro, scope, ship it, fail fast, hustle culture, "build cycle", "alignment", "scale"
+- Be specific — not "the vibe" but what you SEE: green tweed, toy figure, sequin jacket, smoking in the car, doll proportions, etc.
+- Scale: playful savage. Not cruel about real people's bodies — punch the *choices* in the frame (outfit, pose, props).
+- Headlines: short shots ("SIR.", "THE NERVE.", "NAH.", "CERTIFIED L", "POV: CHAOS")
+- Kickers: one concrete visual jab ("…the cigarette is doing more work than the fit.")`;
+    arcOverride = "SETUP → ESCALATE → DEEPEST ROAST → CALLBACK → SAVE/CTA";
+  } else if (isComedy) {
+    intentLabel = "comedy";
+    toneGuidance = `THIS IS COMEDY CONTENT. Every scene should have a punchline or absurdist observation. No corporate speak. Write like you post memes.`;
+  } else if (isMotivation) {
+    intentLabel = "motivation";
+    toneGuidance = `MOTIVATIONAL CONTENT. Raw, real, not corporate. Think early morning gym energy. Short punchy lines. Make the viewer feel it.`;
+  } else if (isTutorial) {
+    intentLabel = "tutorial";
+    toneGuidance = `TUTORIAL FORMAT. Numbered steps, clear payoffs per scene. Kickers explain the "why" behind each step.`;
+  } else if (isHype) {
+    intentLabel = "hype";
+    toneGuidance = `PURE HYPE. 1-3 ALL CAPS words per headline. Make every frame feel like a drop.`;
+  }
+
+  return { isRoast, isComedy, isMotivation, isTutorial, isHype, subjectName, intentLabel, toneGuidance, arcOverride };
+}
+
 function buildDirectorPrompt(
   userBrief: string,
   visionNotes: VisionNote[],
+  attachmentOrder: { path: string; name: string }[] | null,
   aspect: string,
   creative: HyperframesCreativeProfile,
   targetSec: number,
   maxScenes: number,
   webContext?: string
 ): string {
+  const intent = detectCreativeIntent(userBrief);
+  const byPath = new Map(visionNotes.map((n) => [n.path, n]));
+
   const visionBlock =
-    visionNotes.length > 0
-      ? `\nImages:\n${visionNotes
-          .filter((n) => n.subject)
-          .map((n, i) => {
-            const spatial = n.composition ? ` | composition: ${n.composition}` : "";
-            const zone = n.text_zone ? ` | text_zone: ${n.text_zone}` : "";
-            const ctype = n.content_type ? ` | type: ${n.content_type}` : "";
-            const cstyle = n.copy_style ? ` | copy_style: ${n.copy_style}` : "";
-            return `  ${i + 1}. ${n.subject} | mood: ${n.mood}${spatial}${zone}${ctype}${cstyle}`;
+    attachmentOrder && attachmentOrder.length > 0
+      ? `\nImages — ${attachmentOrder.length} uploads. You MUST plan exactly ${attachmentOrder.length} scenes (one beat per image, same order — image 1 → scene index 0, etc.):\n${attachmentOrder
+          .map((a, i) => {
+            const n = byPath.get(a.path);
+            const spatial = n?.composition ? ` | composition: ${n.composition}` : "";
+            const zone = n?.text_zone ? ` | text_zone: ${n.text_zone}` : "";
+            const ctype = n?.content_type ? ` | type: ${n.content_type}` : "";
+            const cstyle = n?.copy_style ? ` | copy_style: ${n.copy_style}` : "";
+            const pal = n?.palette?.length ? n.palette.slice(0, 3).join(", ") : "—";
+            if (!n?.subject?.trim()) {
+              return `  ${i + 1}. "${a.path}" (${a.name})\n     · vision thin — still write from visible cues (figure, clothes, setting). palette: ${pal}${spatial}${zone}${ctype}${cstyle}`;
+            }
+            return `  ${i + 1}. "${a.path}" (${a.name})\n     · subject: ${n.subject} | mood: ${n.mood || "—"} | palette: ${pal}${spatial}${zone}${ctype}${cstyle}`;
           })
           .join("\n")}`
-      : "";
+      : visionNotes.length > 0
+        ? `\nImages analyzed (${visionNotes.length} total):\n${visionNotes
+            .map((n, i) => {
+              const spatial = n.composition ? ` | composition: ${n.composition}` : "";
+              const zone = n.text_zone ? ` | text_zone: ${n.text_zone}` : "";
+              const ctype = n.content_type ? ` | type: ${n.content_type}` : "";
+              const cstyle = n.copy_style ? ` | copy_style: ${n.copy_style}` : "";
+              const sub = n.subject?.trim() || "(describe visible subject)";
+              return `  ${i + 1}. ${sub} | mood: ${n.mood}${spatial}${zone}${ctype}${cstyle}`;
+            })
+            .join("\n")}`
+        : "";
 
-  return `You are a creative director. Plan a ${targetSec}s video in ${aspect}.
+  const intentBlock = intent.toneGuidance
+    ? `\n═══ CREATIVE INTENT: ${intent.intentLabel.toUpperCase()} ═══\n${intent.toneGuidance}\n`
+    : "";
+
+  const arcBlock = intent.arcOverride
+    ? `\nNARRATIVE ARC: ${intent.arcOverride}\n`
+    : "";
+
+  const sceneCountRule =
+    attachmentOrder && attachmentOrder.length > 0
+      ? `EXACTLY ${attachmentOrder.length} scenes — one per uploaded image, in upload order. Not fewer.`
+      : `Between 2 and ${maxScenes} scenes.`;
+
+  return `${BRAIN_CREATIVE_DIRECTIVES}
+
+You are a creative director. Plan a ${targetSec}s video in ${aspect}.
 Brief: "${userBrief || "(derive concept from images below)"}"
-Feel: ${creative.motionFeel} motion · ${creative.captionTone} copy · ${creative.transitionEnergy} energy · up to ${maxScenes} scenes${visionBlock}
+Feel: ${creative.motionFeel} motion · ${creative.captionTone} copy · ${creative.transitionEnergy} energy · ${sceneCountRule}${visionBlock}
 ${webContext ? webContext : ""}
-
+${intentBlock}${arcBlock}
 Return ONE JSON only — no prose, no markdown:
 {
   "title": "PascalCase ≤24 chars",
@@ -414,8 +599,8 @@ Return ONE JSON only — no prose, no markdown:
     "index": 0,
     "layout": "hud|editorial|typographic|split|orbital|data-grid|full-bleed|glitch|magazine",
     "bg": "#hex or CSS gradient",
-    "headline": "SPECIFIC headline for this scene — not generic",
-    "kicker": "mono label e.g. 'PHASE 01 · LAUNCH'",
+    "headline": "SPECIFIC headline for this scene — grounded in what the image shows — NEVER generic",
+    "kicker": "mono label that expands on the headline with a specific detail",
     "body": "optional 1 sentence",
     "accent": "#hex",
     "primitives": ["HUDCorners","StarField","GridOverlay","KineticTitle","TelemetryCounter","StatusBar","DataReadout","ScanLines","LightLeak"],
@@ -424,17 +609,20 @@ Return ONE JSON only — no prose, no markdown:
   }]
 }
 
-Rules: scenes 2–${maxScenes}. Headlines SPECIFIC to brief/images — never "Explore Now" or "Amazing Journey". Vary layouts. Match palette to mood. For ${creative.captionTone}: ${
+Rules: ${attachmentOrder && attachmentOrder.length > 0 ? `scenes array length MUST equal ${attachmentOrder.length} (one scene per image).` : `scenes 2–${maxScenes}.`} Headlines SPECIFIC to brief/images — derived from WHAT IS VISIBLE. Never generic travel-brand voice. Vary layouts. Match palette to mood.${intent.isRoast ? " ROAST: every headline = funny specific visual jab — zero startup jargon." : ""}
+For ${creative.captionTone}: ${
+    intent.isRoast ? "punchy savage observations — short, funny, specific to the photo" :
     creative.captionTone === "hype" ? "ALL-CAPS 1-4 word punches" :
     creative.captionTone === "corporate" ? "Title Case benefit lines" :
     creative.captionTone === "storytelling" ? "evocative cinematic fragments" :
     creative.captionTone === "tutorial" ? "step labels, numbered" : "scroll-stopping social hooks"
-  }. Banned: "revolutionary", "game-changing", "unlock", "elevate", "let's dive in".`;
+  }. Banned words/phrases: "revolutionary", "game-changing", "unlock", "elevate", "let's dive in", "deploy", "iterate", "throughput", "sprint", "PMF", "fail fast", "MVP", "refactor", "latency", "alignment", "stakeholder", "retro", "pipeline", "scale".`;
 }
 
 async function runBrainPass(
   userBrief: string,
   visionNotes: VisionNote[],
+  attachmentOrder: { path: string; name: string }[] | null,
   aspect: string,
   creative: HyperframesCreativeProfile,
   targetSec: number,
@@ -442,13 +630,27 @@ async function runBrainPass(
 ): Promise<{ concept: ConceptBrief; brief: DirectorBrief | null }> {
   // Fetch real-world context (design trends, domain vocabulary) to inject into the director brief.
   // This gives Gemma grounded copy ideas rather than generic filler. Fails silently if offline.
+  const intentEarly = detectCreativeIntent(userBrief);
   const contentTypes = visionNotes.map((n) => n.content_type ?? "").filter(Boolean);
   const copyStyles = visionNotes.map((n) => n.copy_style ?? "").filter(Boolean);
   const webQueries = buildContextQueries(userBrief, contentTypes, copyStyles);
   const webContextItems = await fetchWebContext(webQueries);
-  const webContext = formatWebContext(webContextItems);
+  const webContext = formatWebContext(webContextItems, {
+    isRoast: intentEarly.isRoast,
+    captionTone: creative.captionTone,
+    contentTypes,
+  });
 
-  const prompt = buildDirectorPrompt(userBrief, visionNotes, aspect, creative, targetSec, maxScenes, webContext);
+  const prompt = buildDirectorPrompt(
+    userBrief,
+    visionNotes,
+    attachmentOrder,
+    aspect,
+    creative,
+    targetSec,
+    maxScenes,
+    webContext
+  );
   try {
     const raw = await callOllamaChat(
       [{ role: "user", content: prompt }],
@@ -524,11 +726,10 @@ Rules: text_zone must be where there is OPEN SPACE or dark area in the image (av
 }
 
 /**
- * Batch vision — send up to 6 images in ONE Gemma call, get back an array.
- * Replaces N sequential describeImage calls with a single round-trip.
- * For images beyond the batch cap, returns bare-stats fallbacks.
+ * Max images per single Gemma vision call. Smaller chunks = fewer truncated `notes`
+ * arrays from the model (fixes “only 2 of 6 thumbnails got vision text”).
  */
-const VISION_BATCH_CAP = 6;
+const VISION_CHUNK_SIZE = 3;
 
 function extractVisionNote(p: Record<string, unknown> | null, a: ImageStats): VisionNote {
   if (!p) return { path: a.path, subject: "", mood: "", palette: [a.dominant], brightness: a.brightness };
@@ -551,17 +752,78 @@ function extractVisionNote(p: Record<string, unknown> | null, a: ImageStats): Vi
   };
 }
 
-async function describeImagesBatch(
-  analyses: ImageStats[],
+function placeholderStats(path: string, name: string): ImageStats {
+  return {
+    path,
+    name,
+    width: 0,
+    height: 0,
+    dominant: "#444444",
+    brightness: 0.45,
+    base64: "",
+  };
+}
+
+function isPlaceholderStats(a: ImageStats): boolean {
+  return a.width === 0 && a.height === 0;
+}
+
+/** When sharp cannot decode a file, still produce a vision line so every thumbnail gets copy. */
+async function describeUnreadableAttachment(path: string, name: string): Promise<VisionNote> {
+  const stub = placeholderStats(path, name);
+  const prompt = `No image pixels could be read from disk. Filename: "${name}". Relative path: "${path}".
+Infer a plausible on-screen subject for a short-form video (dolls, puppets, plastic figures, toy cars, costumes, cigarettes/smoke, car windows, etc. if the filename hints at it).
+Return ONLY JSON: {"subject":"one concrete sentence","mood":"2-4 words","palette":["#553322","#111111","#dddddd"],"composition":"assume subject centered","text_zone":"bottom-left","content_type":"fashion","copy_style":"cinematic miniature / toy figure"}`;
+
+  try {
+    const raw = await callOllamaChat([{ role: "user", content: prompt }], true);
+    const parsed = safeJson(raw) as Record<string, unknown> | null;
+    return extractVisionNote(parsed, stub);
+  } catch {
+    return {
+      path,
+      subject: `Could not read "${name}" — add a short description in your prompt or re-upload the file.`,
+      mood: "",
+      palette: [stub.dominant],
+      brightness: stub.brightness,
+    };
+  }
+}
+
+/** Align sharp reads 1:1 with attachment list — never drop a slot (fixes partial vision UI). */
+function analysesForAttachments(
+  attachments: { path: string; name: string }[],
+  results: (ImageStats | null)[]
+): ImageStats[] {
+  return attachments.map((a, i) => results[i] ?? placeholderStats(a.path, a.name));
+}
+
+/** Describe a single chunk (up to VISION_CHUNK_SIZE images) in one Gemma call. */
+async function describeChunk(
+  chunk: ImageStats[],
   captionTone?: HyperframesCaptionTone
 ): Promise<VisionNote[]> {
-  const batch = analyses.slice(0, VISION_BATCH_CAP);
-  const n = batch.length;
+  const n = chunk.length;
+  if (n === 0) return [];
+
+  const out: VisionNote[] = new Array(n);
+  const pixelIdx: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (isPlaceholderStats(chunk[i])) {
+      out[i] = await describeUnreadableAttachment(chunk[i].path, chunk[i].name);
+    } else {
+      pixelIdx.push(i);
+    }
+  }
+  if (pixelIdx.length === 0) return out;
+
+  const pixelChunk = pixelIdx.map((i) => chunk[i]);
+  const m = pixelChunk.length;
   const toneHint = captionTone ? `\nCopy tone: "${captionTone}".` : "";
 
-  const prompt = `You are an art director. Analyze these ${n} photos IN ORDER (image 1, image 2, …) and return a JSON object.
+  const prompt = `You are an art director. Analyze these ${m} photo(s) IN ORDER (image 1, image 2, …) and return a JSON object.
 
-Return exactly: {"notes": [array of ${n} objects, one per photo in order]}
+Return exactly: {"notes": [array of ${m} objects, one per photo in order]}
 
 Each object must have:
 {
@@ -574,32 +836,87 @@ Each object must have:
   "copy_style":   "3-5 words e.g. luxury lifestyle aspirational"
 }
 text_zone = where open space or dark area exists (avoid focal subjects/faces).${toneHint}
+The "notes" array MUST have exactly ${m} entries — same count as images. No merging, no skipping.
 Return ONLY the JSON. No prose.`;
 
-  try {
+  const run = async (): Promise<VisionNote[]> => {
     const raw = await callOllamaChat(
-      [{ role: "user", content: prompt, images: batch.map((a) => a.base64) }],
+      [{ role: "user", content: prompt, images: pixelChunk.map((a) => a.base64) }],
       true
     );
     const parsed = safeJson(raw) as Record<string, unknown> | null;
     const notes = Array.isArray(parsed?.notes) ? (parsed!.notes as Record<string, unknown>[]) : null;
+    return pixelChunk.map((a, i) => extractVisionNote((notes?.[i] ?? null) as Record<string, unknown> | null, a));
+  };
 
-    // Map results back to analyses — fallback per-image if array is short/missing
-    return batch.map((a, i) => {
-      const entry = notes?.[i] ?? null;
-      return extractVisionNote(entry as Record<string, unknown> | null, a);
+  try {
+    let sub = await run();
+    let thin = sub.map((note, j) => (!note.subject?.trim() ? j : -1)).filter((j) => j >= 0);
+    if (thin.length > 0 && m > 1) {
+      sub = await run();
+    }
+    thin = sub.map((note, j) => (!note.subject?.trim() ? j : -1)).filter((j) => j >= 0);
+    for (const j of thin) {
+      try {
+        const one = await describeChunk([pixelChunk[j]], captionTone);
+        sub[j] = one[0] ?? sub[j];
+      } catch {
+        /* keep thin */
+      }
+    }
+    pixelIdx.forEach((orig, j) => {
+      out[orig] = sub[j];
     });
+    return out;
   } catch {
-    return batch.map((a) => ({ path: a.path, subject: "", mood: "", palette: [a.dominant], brightness: a.brightness }));
+    pixelIdx.forEach((orig) => {
+      const a = chunk[orig];
+      out[orig] = { path: a.path, subject: "", mood: "", palette: [a.dominant], brightness: a.brightness };
+    });
+    return out;
   }
 }
 
+/**
+ * Describe ALL images, chunked into groups of VISION_CHUNK_SIZE to avoid
+ * overloading the model's context. Results are merged back in original order.
+ */
+async function describeImagesBatch(
+  analyses: ImageStats[],
+  captionTone?: HyperframesCaptionTone
+): Promise<VisionNote[]> {
+  if (analyses.length === 0) return [];
+
+  // Build chunks
+  const chunks: ImageStats[][] = [];
+  for (let i = 0; i < analyses.length; i += VISION_CHUNK_SIZE) {
+    chunks.push(analyses.slice(i, i + VISION_CHUNK_SIZE));
+  }
+
+  // Process chunks sequentially to avoid saturating Ollama
+  const results: VisionNote[] = [];
+  for (const chunk of chunks) {
+    const notes = await describeChunk(chunk, captionTone);
+    results.push(...notes);
+  }
+  return results;
+}
+
 function safeJson(raw: string): unknown | null {
-  try { return JSON.parse(raw); } catch { /* fall through */ }
-  const first = raw.indexOf("{");
-  const last = raw.lastIndexOf("}");
+  // Strip <think>…</think> blocks — Gemma 4 sometimes wraps its reasoning around the JSON.
+  // Also strip markdown code fences (```json … ```) that Gemma may output before the object.
+  const clean = raw
+    .replace(/<think>[\s\S]*?<\/think>/g, "")
+    .replace(/```(?:json)?\s*/gi, "")
+    .replace(/```\s*$/g, "")
+    .trim();
+
+  try { return JSON.parse(clean); } catch { /* fall through */ }
+  // Last-resort: find first '{' to last '}' in cleaned string
+  const first = clean.indexOf("{");
+  const last = clean.lastIndexOf("}");
   if (first >= 0 && last > first) {
-    try { return JSON.parse(raw.slice(first, last + 1)); } catch { return null; }
+    try { return JSON.parse(clean.slice(first, last + 1)); } catch { return null; }
   }
   return null;
 }
@@ -705,14 +1022,28 @@ function buildReelPrompt(
     ? `═══ ACCENT COLOR GUIDE ═══\nMatch accent hex to the image's dominant palette — not a random color:\n${accentSuggestions}\n`
     : "";
 
+  const intent = detectCreativeIntent(userRequest);
+  const intentRuleBlock = intent.toneGuidance
+    ? `\n═══ CREATIVE INTENT: ${intent.intentLabel.toUpperCase()} ═══\n${intent.toneGuidance}\n`
+    : "";
+  const intentArcOverride = intent.arcOverride ?? null;
+
+  /** Always 1:1 with uploads so Gemma cannot "remix" duplicate paths unless the user removes images. */
+  const oneScenePerImage = attachments.length > 0;
+  const sceneCountRule = oneScenePerImage
+    ? `EXACTLY ${attachments.length} — one scene per uploaded image, preserve list order, each "src" appears once`
+    : `2 to ${maxScenes}`;
+
   const criticalRules = `CRITICAL RULES (read before schema):
 - Every scene.src MUST be copied letter-for-letter from the image list below — no paraphrasing
-- scenes.length: 2 to ${maxScenes}
+- scenes.length: ${sceneCountRule}
 - caption ≤${captionMax} chars · kicker ≤${kickerMax} chars
 - Vary transitions scene-to-scene — no two in a row the same
-- Caption must reference what's IN that image (from subject/mood below) — never generic
+- Caption must reference what's IN that image (from subject/mood below) — never generic${intent.isRoast ? "\n- THIS IS A ROAST: every caption = specific funny observation about what's visible in THAT image" : ""}
 `;
-  const remixBlock = buildReelRemixDirective(attachments.length, maxScenes);
+  const remixBlock = buildReelRemixDirective(attachments.length, maxScenes, {
+    oneScenePerImage,
+  });
   const longForm = targetDurationSec >= 45;
   const lingoBlock = `═══ TARGET RUNTIME: ${targetDurationSec} seconds (~${targetDurationSec * 30} frames @ 30fps) ═══
 Scene holds will be tuned to fill this length. Write copy that earns the full runtime:
@@ -743,7 +1074,15 @@ Distribute your scenes across this arc. Don't make every scene feel the same.
   // Director brief block — pre-planned copy from the brain pass. When present,
   // Gemma must use the EXACT headline/kicker/accent per scene index (not invent new).
   const directorBlock = brief?.scenes.length
-    ? `═══ DIRECTOR BRIEF — copy approved. Use verbatim. ═══
+    ? intent.isRoast
+      ? `═══ DIRECTOR BRIEF — roast beats (one per scene). ═══
+${brief.scenes.slice(0, maxScenes).map((s, i) =>
+  `  Scene ${i + 1}: headline="${s.headline}" | kicker="${s.kicker}" | accent="${s.accent}"`
+).join("\n")}
+
+RULE: Treat each line as a BEAT, not final copy. Paste into JSON only after ensuring it is (a) a specific visual roast of THAT photo, (b) free of startup/motivation jargon. Rewrite any weak or corporate-sounding line — keep the joke structure but make it meaner and more literal about what's on screen. Match scene index to image order (scene 1 → first image path, etc.).
+`
+      : `═══ DIRECTOR BRIEF — copy approved. Use verbatim. ═══
 ${brief.scenes.slice(0, maxScenes).map((s, i) =>
   `  Scene ${i + 1}: caption="${s.headline}" | kicker="${s.kicker}" | accent="${s.accent}"`
 ).join("\n")}
@@ -752,13 +1091,21 @@ STRICT RULE: The caption and kicker above are APPROVED copy — paste them verba
 `
     : "";
 
-  return `You are a video art director generating a JSON scene plan for a ${aspectMeta.label} reel.
+  // Override narrative arc if intent detection says so
+  const finalNarrativeBlock = intentArcOverride
+    ? `═══ NARRATIVE ARC (mandatory) ═══\nArc for this content: ${intentArcOverride}\n- Scene 1 = opener/hook\n- Middle scenes = escalation\n- Last scene = biggest punchline or CTA\n`
+    : narrativeBlock;
+
+  return `${GEMMA_JSON_CREATIVE_DIRECTIVES}
+
+You are a video art director generating a JSON scene plan for a ${aspectMeta.label} reel.
 Pace: ${pace.toUpperCase()} — ${paceMeta.blurb}.
 
 ${creativeBlock}
+${intentRuleBlock}
 ${culturalBlock}
 
-${narrativeBlock}
+${finalNarrativeBlock}
 ${colorBlock}
 ${criticalRules}
 ${remixBlock}
@@ -788,7 +1135,7 @@ The JSON must parse with JSON.parse().
 ${imgList}
 
 ═══ RULES ═══
-- scenes.length must be between 2 and ${maxScenes} (remix: same src may repeat — see REMIX block)
+- scenes.length: ${oneScenePerImage ? `must be EXACTLY ${attachments.length} (see REMIX / one-per-image block)` : `between 2 and ${maxScenes} (remix: same src may repeat — see REMIX block)`}
 - Every scene.src MUST be one of the paths above — copied letter-for-letter (repeats allowed)
 - Captions MUST stay grounded in the subject/mood of that image when it appears — never generic; when an image repeats, change the angle (hook vs proof vs CTA)
 - Caption + kicker MUST follow the CREATIVE DIRECTIVE caption tone above (hype vs corporate vs tutorial vs storytelling vs social).
@@ -916,6 +1263,20 @@ function parseHtmlSlidesFromGemma(fullResponse: string): string[] {
   return [];
 }
 
+/** When director brief has fewer scenes than rendered HTML slides, derive a spoken line from slide HTML. */
+function extractNarrationFallbackFromSlideHtml(html: string): string {
+  const oneLine = html.replace(/\s+/g, " ");
+  const heading = oneLine.match(/<h[1-3][^>]*>([^<]{1,220})/i);
+  if (heading?.[1]?.trim()) return heading[1].trim().slice(0, 220);
+  const stripped = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (stripped || "This slide.").slice(0, 280);
+}
+
 function buildHtmlSlidesPrompt(
   userRequest: string,
   w: number,
@@ -928,6 +1289,7 @@ function buildHtmlSlidesPrompt(
   brief?: DirectorBrief | null
 ): string {
   const byPath = new Map(visionNotes.map((n) => [n.path, n]));
+  const slideIntent = detectCreativeIntent(userRequest);
   const imgBlock =
     attachments.length === 0
       ? ""
@@ -994,14 +1356,14 @@ Invent a cohesive slide sequence: hooks, captions, and supporting copy driven by
      · accent: ${s.accent}${s.secondary ? ` · secondary: ${s.secondary}` : ""}${dataLine}
      · motion_note: ${s.motion_note}`;
     }).join("\n\n");
-    return `═══ DIRECTOR BRIEF — execute these slide specs exactly ═══
-Palette: bg=${brief.palette.bg} · text=${brief.palette.text} · accent=${brief.palette.accent}
-Headline font: ${brief.typography.headline_font} · Mono font: ${brief.typography.mono_font}
-Motion language: ${brief.motion_language}
-
-${sceneLines}
-
-EXECUTION RULES:
+    const roastHtmlRules = slideIntent.isRoast || slideIntent.isComedy
+      ? `EXECUTION RULES (ROAST / COMEDY):
+- Treat each headline/kicker as a comedy BEAT. Rewrite any line that sounds corporate, motivational, LinkedIn, or fake "mission control" (STATUS:, PROTOCOL:, CORE DIRECTIVE, deployment metaphors).
+- Stay literal about what shows in the photo (outfit, doll/plastic look, car interior, cigarette, hair, expression).
+- Match bg/accent per slide. Headline font at strong display sizes.
+- Each slide visually distinct — vary layout and type scale.
+`
+      : `EXECUTION RULES:
 - Use the EXACT headline and kicker text from each slide spec above — do not paraphrase
 - Match the bg and accent hex values per slide
 - For "hud" or "data-grid" layouts: render data overlays as styled <div> blocks with the mono font + accent color — e.g. a metric label in small-caps + large numeric value
@@ -1009,6 +1371,14 @@ EXECUTION RULES:
 - For "magazine": thin horizontal rules, small-caps metadata labels, structured grid
 - Each slide must have distinct visual identity — vary layout, type scale, and color emphasis
 `;
+    return `═══ DIRECTOR BRIEF — ${slideIntent.isRoast ? "roast beats (execute with comedic specificity)" : "execute these slide specs exactly"} ═══
+Palette: bg=${brief.palette.bg} · text=${brief.palette.text} · accent=${brief.palette.accent}
+Headline font: ${brief.typography.headline_font} · Mono font: ${brief.typography.mono_font}
+Motion language: ${brief.motion_language}
+
+${sceneLines}
+
+${roastHtmlRules}`;
   })() : "";
 
   // Cultural context for HTML slides — same platform detection as reel
@@ -1027,8 +1397,10 @@ EXECUTION RULES:
     copyStyles: copyStylesForSlide,
   });
 
-  return `You are a senior motion designer + art director. The user wants a video made of separate HTML slides, each rendered as a PNG (${w}×${h}px).
+  return `${HTML_SLIDES_CREATIVE_DIRECTIVES}
 
+You are a senior motion designer + art director. The user wants a video made of separate HTML slides, each rendered as a PNG (${w}×${h}px).
+${slideIntent.toneGuidance ? `\n═══ CREATIVE INTENT ═══\n${slideIntent.toneGuidance}\n` : ""}
 Each slide = ONE self-contained HTML fragment (body content only — no <!DOCTYPE>). Use inline styles on a single root wrapper. CSS <style> blocks allowed (for @keyframes animations). No external JavaScript.
 
 ═══ TYPOGRAPHY (Google Fonts — REQUIRED on every slide with visible text) ═══
@@ -1043,11 +1415,11 @@ CSS @keyframes in a <style> tag are fully supported — use them for: fade-in, s
    - Space/tech: linear-gradient(135deg, #05070D 0%, #0B1426 60%, #0D1F3C 100%)
    - Editorial: linen/cream #F5F0E8 with subtle texture via repeating-linear-gradient
    - Neon: radial-gradient at accent color from center, dark edges
-2. STRUCTURE LAYER: geometric elements that frame the composition
+2. STRUCTURE LAYER: geometric framing — rules, brackets, SVG — not a fake server dashboard
    - Thin 1px horizontal rules (top + bottom of text zone)
-   - Corner brackets via border-top + border-left on positioned divs (mission control style)
+   - Corner brackets via border on positioned divs (editorial / film title vibe — not "incident room" cosplay)
    - SVG grid, arc, circle, or orbital path
-   - Data readout blocks: small-caps label + large mono value + accent color
+   - Optional on-story "stats" only if they match the actual narrative (chapter 02 / 08, time, mood) — never DevOps filler strings
 3. TYPOGRAPHY LAYER: intentional scale contrast
    - Dominant headline: 100-180px, tight tracking (-0.03em to -0.05em), bold weight
    - Kicker/label: 13-18px, 0.2em letter-spacing, uppercase, 55% opacity, mono font
@@ -1056,7 +1428,7 @@ CSS @keyframes in a <style> tag are fully supported — use them for: fade-in, s
 
 ═══ LAYOUT PATTERNS (pick one per slide, vary across the deck) ═══
 - EDITORIAL: large headline top-left, thin rule below, small kicker left-aligned, whitespace dominant
-- HUD/DATA: dark bg, HUD corner brackets, 2-4 metric blocks (label/value/unit), status bar bottom
+- HUD/DATA: dark bg, corner brackets, 2-4 on-story blocks (scene #, mood word, time) — never "STATUS:", "PROTOCOL:", "// CORE DIRECTIVE", deployment, or anti-performance joke labels
 - MAGAZINE: cream bg, black type, thin rules framing sections, page number bottom-right
 - SPLIT: left 55% image or gradient, right 45% text panel with solid bg
 - TYPOGRAPHIC: headline fills 70% of slide, contrasting italic or weight shift on key word
@@ -1088,7 +1460,13 @@ VISUAL RICHNESS — each slide must have at least 3 layers:
 1. Background: gradient or full-bleed image — never flat solid unless brief demands it
 2. Structural elements: thin rules (1px), corner brackets (via border), SVG geometry, grid lines, or a gradient band
 3. Typography: headline at display size + mono label/kicker in contrasting scale
-For "hud" / "data-grid" slides: add 2-4 metric blocks with monospace font — label (small, 0.15em tracking, uppercase, 50% opacity) + value (large, bold, accent color)
+For "hud" / "data-grid" slides: mono labels must read like a magazine / film poster (01 / 06, ACT III, MIDNIGHT) — not SaaS metrics, not SRE cosplay.
+
+═══ BANNED VISIBLE COPY (do not put these in HTML text nodes) ═══
+- Lines starting with // or mimicking code comments as kicker "labels"
+- CORE DIRECTIVE, DEPLOYMENT FAILURE, ANTI-PERFORMANCE, PERFORMANCE CHECK, fake STATUS:/PROTOCOL:/SEVERITY: lines
+- deploy, deployment, ship, sprint, throughput, "don't miss the next…", incident-room clichés
+- If you need a small mono kicker, use scene index, mood, place, or a literal story beat from the brief/photos
 
 ${imgBlock}${directorHtmlBlock}
 ═══ OUTPUT FORMAT (do NOT use JSON — HTML breaks JSON parsers) ═══
@@ -1105,11 +1483,179 @@ ${briefBlock}
 Now output the slides using ---SLIDE--- separators only.`;
 }
 
+/** Startup / productivity voice — forbidden when user asked for a roast or comedy burn. */
+const ROAST_JARGON_PATTERNS: Array<{ re: RegExp; label: string }> = [
+  { re: /\bship(?:ping)?\s+it\b/i, label: "ship it" },
+  { re: /\bdeploy(?:ment|s)?\b/i, label: "deploy" },
+  { re: /\blogout\b|\blog\s+out\b/i, label: "logout" },
+  { re: /\bsprint\b/i, label: "sprint" },
+  { re: /\brefactor\w*\b/i, label: "refactor" },
+  { re: /\bfirmware\b/i, label: "firmware" },
+  { re: /\bdeprecated\b/i, label: "deprecated" },
+  { re: /\bbuffering\b/i, label: "buffering" },
+  { re: /\bmetrics\b/i, label: "metrics" },
+  { re: /\bversion\s*1[.,]?\s*0\b|\bv1(\.\d+)?\b/i, label: "v1.0" },
+  { re: /\bfail\s+fast\b/i, label: "fail fast" },
+  { re: /\b\d{4}\s+stack\b/i, label: "year stack" },
+  { re: /\bdon't\s+miss\s+the\s+next\b/i, label: "engagement bait" },
+  { re: /\biterate\b/i, label: "iterate" },
+  { re: /\bthroughput\b/i, label: "throughput" },
+  { re: /\bback\s+to\s+(?:the\s+)?stack\b/i, label: "stack" },
+  { re: /\btech\s+stack\b/i, label: "stack" },
+  { re: /\bPMF\b/i, label: "PMF" },
+  { re: /product[-– ]market\b/i, label: "product-market" },
+  { re: /\bsimulation\b/i, label: "simulation" },
+  { re: /\bhard\s+reboot\b/i, label: "reboot" },
+  { re: /\bMVP\b/i, label: "MVP" },
+  { re: /\blatency\b/i, label: "latency" },
+  { re: /\bstakeholder/i, label: "stakeholder" },
+  { re: /\bretro\b/i, label: "retro" },
+  { re: /\bbuild[,.]?\s*deploy\b/i, label: "build/deploy" },
+  { re: /\bown\s+the\s+week\b/i, label: "hustle cliché" },
+  { re: /\bbest\s+version\s+deploy/i, label: "deploy metaphor" },
+  { re: /\bkickstart\b/i, label: "kickstart" },
+  { re: /\bencore\b/i, label: "encore" },
+  { re: /\bcurtain\s+calls?\b/i, label: "curtain call" },
+];
+
+function findRoastJargonInText(text: string): string[] {
+  const hits: string[] = [];
+  for (const { re, label } of ROAST_JARGON_PATTERNS) {
+    if (re.test(text)) hits.push(label);
+  }
+  return [...new Set(hits)];
+}
+
+/** Faux SRE / incident-room labels pasted into HTML mono kickers (Hyperframes). */
+const HYPERFRAMES_DEVOPS_COSPLAY: Array<{ re: RegExp; label: string }> = [
+  { re: /\/\/\s*core\s+directive/i, label: "core directive" },
+  { re: /\bcore\s+directive\b/i, label: "core directive" },
+  { re: /\bdeployment\s+failure\b/i, label: "deployment failure" },
+  { re: /\banti[-\s]?performance\b/i, label: "anti-performance" },
+  { re: /\bperformance\s+check\b/i, label: "performance check" },
+  {
+    re: /\bstatus\s*:\s*(unfiltered|anti|deploy|online|offline|standby|severity|protocol|failure)/i,
+    label: "fake STATUS line",
+  },
+  {
+    re: /\bprotocol\s*:\s*(deconstruct|recon|deploy|decode|override|abort|init)/i,
+    label: "protocol HUD",
+  },
+  { re: /\bseverity\s*:\s*\d+/i, label: "severity cosplay" },
+  { re: /\bincident\s*(?:#\s*)?\d+/i, label: "incident cosplay" },
+];
+
+function htmlSlideVisibleText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findHyperframesBannedCopy(html: string): string[] {
+  const text = htmlSlideVisibleText(html);
+  const hits = [...findRoastJargonInText(text)];
+  for (const { re, label } of HYPERFRAMES_DEVOPS_COSPLAY) {
+    if (re.test(text)) hits.push(label);
+  }
+  return [...new Set(hits)];
+}
+
+async function repairHtmlSlidesTechBro(
+  rawDeck: string,
+  userBrief: string,
+  canvasW: number,
+  canvasH: number
+): Promise<string | null> {
+  const prompt = `${HTML_SLIDES_CREATIVE_DIRECTIVES}
+
+You fix HTML slide decks. The draft used fake "DevOps / incident room" mono labels and startup jargon in visible text.
+
+Rewrite ONLY visible copy (headlines, kickers, mono labels, supporting lines). Keep every \`<img src="…">\` exactly the same, same ${canvasW}×${canvasH} wrapper, inline styles, @keyframes, and Google Fonts links. Close all tags — no broken \`</div\`.
+
+Banned in output: "// CORE DIRECTIVE", "STATUS:", "PROTOCOL:", "DEPLOYMENT", "ANTI-PERFORMANCE", "PERFORMANCE CHECK", severity/incident cosplay, deploy/ship/sprint metaphors, "don't miss the next deployment".
+
+Use editorial kickers: scene index (01 / 06), mood, place, or a joke tied to the brief — not IT role-play.
+
+Return the FULL deck with ---SLIDE--- separators only. No markdown fences.
+
+USER BRIEF:
+${userBrief.slice(0, 800)}
+
+INPUT:
+${rawDeck.slice(0, 95_000)}`;
+
+  try {
+    const raw = await callOllamaChat([{ role: "user", content: prompt }], true);
+    const cleaned = raw
+      .replace(/<think>[\s\S]*?<\/think>/g, "")
+      .replace(/```(?:html)?\s*/gi, "")
+      .replace(/```\s*$/g, "")
+      .trim();
+    if (cleaned.includes("---SLIDE---") && cleaned.includes("<")) return cleaned;
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
+/** One repair pass when the model slips into LinkedIn voice or scrambles scene/src order. */
+async function repairReelJsonForRoast(
+  badJson: string,
+  userBrief: string,
+  lockedSrcOrder?: string[]
+): Promise<string | null> {
+  const orderBlock =
+    lockedSrcOrder && lockedSrcOrder.length > 0
+      ? `
+LOCKED PHOTO ORDER — ${lockedSrcOrder.length} scenes only:
+${lockedSrcOrder.map((s, i) => `  Scene ${i + 1}: "src" MUST be exactly "${s}"`).join("\n")}
+Delete extra scenes or duplicate uses of the same photo. No scene may repeat an image.`
+      : "";
+
+  const prompt = `${GEMMA_JSON_CREATIVE_DIRECTIVES}
+
+You are a ruthless copy editor for short-form ROAST comedy (TikTok/Reels), NOT startups.
+
+Fix the JSON below. Problems may include: LinkedIn/tech voice, wrong number of scenes, wrong or duplicate "src" paths, or the same photo used twice.
+Rewrite caption, kicker, and narration on EVERY scene. Jokes must describe what you would SEE (dolls, toy skin, suits, car interior, cigarette, wig, clown paint) — not work or Monday motivation.
+
+STRICT:
+- Output ONE valid JSON object only. No markdown fences.
+- Preserve "title" / "brandName" if present unless they scream corporate podcast — then rename to a short roast title (PascalCase).
+${orderBlock || "- Keep the same number of scenes; each src path must match the input (unless you are fixing duplicates)."}
+- No wording: ship, deploy, deployment, logout, sprint, refactor, firmware, deprecated, buffering, metrics, v1.0, fail fast, year stack, "don't miss the next", iterate, throughput, stack, PMF, product-market, simulation, hard reboot, MVP, latency, stakeholder, retro, kickstart, encore, curtain call, own the week, product-market fit, get back to the stack.
+- CTAs: say "follow for the rest" / "part 2" / "run it back" — never "next deployment" or SaaS metaphors.
+- Sound like a friend roasting on FaceTime, not a manager.
+
+User brief: ${userBrief.slice(0, 600)}
+
+INPUT JSON:
+${badJson.slice(0, 14_000)}`;
+  try {
+    const raw = await callOllamaChat([{ role: "user", content: prompt }], true);
+    const p = safeJson(raw);
+    if (p && typeof p === "object" && Array.isArray((p as Record<string, unknown>).scenes)) {
+      return JSON.stringify(p);
+    }
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
 function validateReelSpec(
   raw: unknown,
   validPaths: Set<string>,
   limits?: { captionMax: number; kickerMax: number },
-  maxSceneCount = 16
+  maxSceneCount = 16,
+  opts?: {
+    roastCopyCheck?: boolean;
+    /** When set: scenes.length must match, scene i src must equal paths[i], no duplicate src */
+    enforceImageOrder?: string[];
+  }
 ): { ok: true; spec: ReelSpec } | { ok: false; error: string } {
   const captionMax = limits?.captionMax ?? 36;
   const kickerMax = limits?.kickerMax ?? 56;
@@ -1157,6 +1703,44 @@ function validateReelSpec(
       transition,
       narration,
     });
+  }
+
+  if (opts?.enforceImageOrder?.length) {
+    const order = opts.enforceImageOrder;
+    if (cleaned.length !== order.length) {
+      return {
+        ok: false,
+        error: `This reel must have exactly ${order.length} scenes (one per uploaded photo). Got ${cleaned.length}.`,
+      };
+    }
+    for (let i = 0; i < order.length; i++) {
+      if (cleaned[i].src !== order[i]) {
+        return {
+          ok: false,
+          error: `Scene ${i + 1} must use the ${i + 1}th uploaded image path "${order[i]}" (not "${cleaned[i].src}"). Same order as the attachment strip.`,
+        };
+      }
+    }
+    const srcs = cleaned.map((c) => c.src);
+    if (new Set(srcs).size !== srcs.length) {
+      return {
+        ok: false,
+        error: "Each uploaded image may appear only once — remove duplicate src entries.",
+      };
+    }
+  }
+
+  if (opts?.roastCopyCheck) {
+    for (let i = 0; i < cleaned.length; i++) {
+      const blob = [cleaned[i].caption, cleaned[i].kicker, cleaned[i].narration].filter(Boolean).join(" ");
+      const bad = findRoastJargonInText(blob);
+      if (bad.length) {
+        return {
+          ok: false,
+          error: `Scene ${i + 1} sounds like startup/motivation jargon (${bad.slice(0, 4).join(", ")}) — rewrite as a visual roast.`,
+        };
+      }
+    }
   }
 
   const title = typeof obj.title === "string" ? obj.title.trim().slice(0, 24) : undefined;
@@ -1338,10 +1922,10 @@ function buildPrompt(
   if (filePath && fileContent) {
     const lines = fileContent.split("\n");
     const trimmed = lines.length > 120 ? lines.slice(0, 120).join("\n") + "\n// ... (truncated)" : fileContent;
-    return `${hfBlock}\n\n${hfCulturalBlock}\n\n${codeVisualBlock}\n\n${rules}\n${primitivesImportLine}\n- ${determinism}\n\n${layoutSafety}\n\n${strictFormat}${directorBlock}\n\nCURRENT FILE (${filePath}):\n\`\`\`tsx\n${trimmed}\n\`\`\`\n\nTASK: ${userRequest}\n\n${runtimeCopyBlock}\n\nOutput the COMPLETE modified file in a single \`\`\`tsx block. No explanations.`;
+    return `${FREEFORM_CODE_CREATIVE_DIRECTIVES}\n\n${hfBlock}\n\n${hfCulturalBlock}\n\n${codeVisualBlock}\n\n${rules}\n${primitivesImportLine}\n- ${determinism}\n\n${layoutSafety}\n\n${strictFormat}${directorBlock}\n\nCURRENT FILE (${filePath}):\n\`\`\`tsx\n${trimmed}\n\`\`\`\n\nTASK: ${userRequest}\n\n${runtimeCopyBlock}\n\nOutput the COMPLETE modified file in a single \`\`\`tsx block. No explanations.`;
   }
 
-  return `${hfBlock}\n\n${hfCulturalBlock}\n\n${codeVisualBlock}\n\n${rules}\n${primitivesImportLine}\n\n${layoutSafety}\n\n${strictFormat}${directorBlock}\n\nTASK: ${userRequest}\n\nSPECS: ${secs}s = ${durationInFrames}fr @ ${fps}fps, canvas ${canvasW}×${canvasH} (${orient}) — match this composition size in all layout math.\n${runtimeCopyBlock}\nUse <Sequence> or <TransitionSeries> for multiple scenes with cinematic transitions aligned to the creative directive.\n\nOutput format (exactly this shape, nothing else):\n\`\`\`tsx\nimport { useCurrentFrame, ... } from "remotion";\nexport const YourComponentName: React.FC = () => { ... };\n\`\`\`\nFILE: remotion/compositions/YourComponentName.tsx`;
+  return `${FREEFORM_CODE_CREATIVE_DIRECTIVES}\n\n${hfBlock}\n\n${hfCulturalBlock}\n\n${codeVisualBlock}\n\n${rules}\n${primitivesImportLine}\n\n${layoutSafety}\n\n${strictFormat}${directorBlock}\n\nTASK: ${userRequest}\n\nSPECS: ${secs}s = ${durationInFrames}fr @ ${fps}fps, canvas ${canvasW}×${canvasH} (${orient}) — match this composition size in all layout math.\n${runtimeCopyBlock}\nUse <Sequence> or <TransitionSeries> for multiple scenes with cinematic transitions aligned to the creative directive.\n\nOutput format (exactly this shape, nothing else):\n\`\`\`tsx\nimport { useCurrentFrame, ... } from "remotion";\nexport const YourComponentName: React.FC = () => { ... };\n\`\`\`\nFILE: remotion/compositions/YourComponentName.tsx`;
 }
 
 function hasModuleLevelHook(code: string): boolean {
@@ -1462,7 +2046,7 @@ function registerInRoot(
   width = 1080,
   height = 1920
 ): void {
-  const rootPath = path.join(PROJECT_DIR, "remotion/Root.tsx");
+  const rootPath = projectPath("remotion/Root.tsx");
   const root = fs.readFileSync(rootPath, "utf-8");
   if (root.includes(`id="${componentName}"`)) return; // already registered
   const compRelative = outPath
@@ -1480,6 +2064,19 @@ function registerInRoot(
   fs.writeFileSync(rootPath, updated, "utf-8");
 }
 
+/**
+ * Resolve a Voicebox profile for TTS narration.
+ * - If ttsVoice looks like a preset voice_id (e.g. "af_bella", "bm_george"), use ensurePresetProfile.
+ * - Otherwise fall back to the legacy resolveProfileForNarration (matches by name/id).
+ */
+async function resolveVoiceProfile(ttsVoice: string) {
+  const PRESET_PATTERN = /^[a-z]{2}_[a-z]+$/i;
+  if (PRESET_PATTERN.test(ttsVoice.trim())) {
+    return ensurePresetProfile(ttsVoice.trim().toLowerCase(), "kokoro");
+  }
+  return resolveProfileForNarration(ttsVoice);
+}
+
 async function generateSceneTTS(
   scenes: Array<{ caption: string; kicker?: string; narration?: string }>,
   componentName: string,
@@ -1488,14 +2085,16 @@ async function generateSceneTTS(
   engine?: string,
   captionTone?: string,
   motionFeel?: string,
+  roastDelivery?: boolean,
 ): Promise<string[]> {
-  const publicDir = path.join(PROJECT_DIR, "public", "tts");
+  const publicDir = projectPath("public", "tts");
   fs.mkdirSync(publicDir, { recursive: true });
 
   const direction = buildVoiceDirection({
     captionTone: (captionTone ?? "social") as CaptionTone,
     motionFeel: (motionFeel ?? "smooth") as MotionFeel,
     contentSeed: componentName,
+    roastDelivery: roastDelivery === true,
   });
 
   const paths: string[] = [];
@@ -1524,6 +2123,9 @@ async function generateSceneTTS(
 // ═══════════════════════════════════════════════════════════════════════════════
 // Route
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/** Long-running Ollama + optional Playwright render — allow generous wall time on Vercel. */
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   let body: {
@@ -1603,6 +2205,10 @@ export async function POST(req: NextRequest) {
     typeof body.maxScenes === "number" && Number.isFinite(body.maxScenes)
       ? Math.max(2, Math.min(24, Math.round(body.maxScenes)))
       : 6;
+  /** Never generate fewer scenes than uploaded images (fixes "8 photos → 6 scenes" when UI default is 6). */
+  const effectiveMaxScenes = hasAttachments
+    ? Math.min(24, Math.max(maxScenes, attachments.length))
+    : maxScenes;
   const useVision = body.useVision !== false; // default on
   const useTTS = body.useTTS === true;
   const ttsVoice = typeof body.ttsVoice === "string" ? body.ttsVoice : "default";
@@ -1615,13 +2221,39 @@ export async function POST(req: NextRequest) {
 
   const stream = new ReadableStream({
     async start(ctrl) {
-      const send = (ev: Record<string, unknown>) =>
-        ctrl.enqueue(enc.encode(`data: ${JSON.stringify(ev)}\n\n`));
+      let streamFinished = false;
+      const finishStream = () => {
+        if (streamFinished) return;
+        streamFinished = true;
+        try {
+          ctrl.close();
+        } catch {
+          /* already closed or errored */
+        }
+      };
 
+      const send = (ev: Record<string, unknown>): boolean => {
+        if (streamFinished) return false;
+        try {
+          ctrl.enqueue(enc.encode(`data: ${JSON.stringify(ev)}\n\n`));
+          return true;
+        } catch {
+          streamFinished = true;
+          return false;
+        }
+      };
+
+      try {
       // ── HTML slide video (Gemma → ---SLIDE--- HTML → Playwright PNG → HtmlSlideVideo) ──
       if (pipeline === "hyperframes") {
         const { w, h, label } = ASPECTS[aspect];
-        const slideCap = Math.min(maxScenes, 10);
+        const slideCap = Math.min(
+          10,
+          Math.max(
+            effectiveMaxScenes,
+            hasAttachments ? attachments.length : 0
+          )
+        );
         // Use the same target-duration math as the Remotion pipeline so the
         // selected duration (10s, 30s, etc.) is actually respected.
         const { sceneLen, transLen } = computeSceneTimingForTarget(targetDurationSec, slideCap, pace);
@@ -1637,14 +2269,11 @@ export async function POST(req: NextRequest) {
           const analysisResults = await Promise.all(
             attachments.map((a) => analyzeImage(a.path, a.name))
           );
-          const analyses: ImageStats[] = analysisResults.filter(
-            (s): s is ImageStats => s !== null
-          );
-          if (!analyses.length) {
+          if (!analysisResults.some(Boolean)) {
             send({ type: "error", content: "Couldn't read any of the uploaded images from disk." });
-            ctrl.close();
             return;
           }
+          const analyses = analysesForAttachments(attachments, analysisResults);
           visionNotes = analyses.map((a) => ({
             path: a.path,
             subject: "",
@@ -1653,16 +2282,39 @@ export async function POST(req: NextRequest) {
             brightness: a.brightness,
           }));
           if (useVision) {
-            const batchCap = Math.min(analyses.length, VISION_BATCH_CAP);
-            send({ type: "status", text: `Vision pass · reading ${batchCap} image(s) in batch…` });
+            send({
+              type: "status",
+              text: `Vision pass · ${analyses.length} image(s) in ${Math.ceil(analyses.length / VISION_CHUNK_SIZE)} batch(es)…`,
+            });
             const batchNotes = await describeImagesBatch(analyses, creative.captionTone);
             visionNotes = visionNotes.map((base, i) => batchNotes[i] ?? base);
             visionNotes.forEach((note) => send({ type: "vision_note", note }));
+          } else {
+            analyses.forEach((a, i) => {
+              send({
+                type: "vision_note",
+                note: {
+                  path: a.path,
+                  subject: `Photo ${i + 1} (${a.name}) — Vision is off; enable it for AI reads of each slide photo.`,
+                  mood: "",
+                  palette: [a.dominant],
+                  brightness: a.brightness,
+                },
+              });
+            });
           }
         }
 
         send({ type: "status", text: `Brain pass · creative director planning your video…` });
-        const { concept: hfConcept, brief: hfBrief } = await runBrainPass(userMessage, visionNotes, aspect, creative, targetDurationSec, slideCap);
+        const { concept: hfConcept, brief: hfBrief } = await runBrainPass(
+          userMessage,
+          visionNotes,
+          hasAttachments ? attachments : null,
+          aspect,
+          creative,
+          targetDurationSec,
+          slideCap
+        );
         if (hfConcept.title) send({ type: "brain_concept", concept: hfConcept });
         if (hfBrief) send({ type: "director_brief", brief: hfBrief });
 
@@ -1682,6 +2334,11 @@ export async function POST(req: NextRequest) {
           hfBrief
         );
         const numPredict = htmlSlideNumPredict(slideCap, hasAttachments);
+        const hfTimeoutMs = htmlSlideStreamTimeoutMs(slideCap, numPredict);
+        send({
+          type: "status",
+          text: `Gemma · HTML stream · budget ${Math.round(hfTimeoutMs / 1000)}s · ${slideCap} slide cap · num_predict ${numPredict}`,
+        });
         let response = "";
         try {
           response = await streamOllama(
@@ -1690,28 +2347,54 @@ export async function POST(req: NextRequest) {
             {
               temperature: 0.35,
               num_predict: numPredict,
+              timeoutMs: hfTimeoutMs,
             }
           );
         } catch (e) {
           send({ type: "error", content: `Ollama error: ${e}` });
-          ctrl.close();
           return;
         }
-        const slides = parseHtmlSlidesFromGemma(response);
+        let slides = parseHtmlSlidesFromGemma(response);
+        const bannedHits = slides.flatMap((html, i) =>
+          findHyperframesBannedCopy(html).map((label) => `slide ${i + 1}: ${label}`)
+        );
+        if (bannedHits.length > 0) {
+          send({
+            type: "status",
+            text: `Copy repair · stripping ${bannedHits.length} devops/jargon hit(s) from slides…`,
+          });
+          const fixed = await repairHtmlSlidesTechBro(response, userMessage, w, h);
+          if (fixed) {
+            const repairedSlides = parseHtmlSlidesFromGemma(fixed);
+            if (repairedSlides.length > 0) {
+              response = fixed;
+              slides = repairedSlides;
+            }
+          }
+        }
+        const stillBanned = slides.flatMap((html, i) =>
+          findHyperframesBannedCopy(html).map((label) => `slide ${i + 1}: ${label}`)
+        );
+        if (stillBanned.length > 0) {
+          send({
+            type: "error",
+            content: `Slides contain banned tech / fake-HUD copy: ${stillBanned.slice(0, 14).join("; ")}. Try a shorter deck or regenerate.`,
+          });
+          return;
+        }
         if (!slides.length) {
           send({
             type: "error",
             content:
               "Couldn't read any slides from Gemma. It should output HTML separated by lines containing only ---SLIDE--- (or legacy JSON {\"slides\":[...]}). Try fewer slides / shorter copy, or run again.",
           });
-          ctrl.close();
           return;
         }
         send({
           type: "status",
           text: `Rendering ${slides.length} slide(s) to PNG (Chromium)…`,
         });
-        const publicDir = path.join(PROJECT_DIR, "public");
+        const publicDir = projectPath("public");
         let renderResult: { jobId: string; paths: string[] };
         try {
           renderResult = await renderHtmlSlidesToPng({
@@ -1725,30 +2408,41 @@ export async function POST(req: NextRequest) {
             type: "error",
             content: e instanceof Error ? e.message : String(e),
           });
-          ctrl.close();
           return;
         }
-        // TTS narration for HYPERFRAMES — use director brief scene headlines as script
+        // TTS narration for HYPERFRAMES — brief lines per slide, HTML fallback if brief is short
         let hfNarrationPaths: string[] = [];
-        if (useTTS && hfBrief?.scenes.length) {
+        const hfRoast = detectCreativeIntent(userMessage).isRoast;
+        if (useTTS && slides.length > 0) {
           send({ type: "tts_note", text: "Voicebox · checking connection…" });
-          const hfProfile = await resolveProfileForNarration(ttsVoice);
+          const hfProfile = await resolveVoiceProfile(ttsVoice);
           if (hfProfile) {
             if (hfProfile.name.includes("Auto narration")) {
               send({
                 type: "tts_note",
-                text: "Voicebox · no saved voices — using preset narrator (same script as Gemma brief)…",
+                text: "Voicebox · no saved voices — using preset narrator (slide text from brief or HTML)…",
               });
             }
             send({ type: "tts_note", text: `Voicebox · narrating slides with "${hfProfile.name}"…` });
+            const ttsScenes = slides.map((html, i) => {
+              const s = hfBrief?.scenes[i];
+              if (s?.headline?.trim()) {
+                return { caption: s.headline, kicker: s.kicker };
+              }
+              return {
+                caption: extractNarrationFallbackFromSlideHtml(html),
+                kicker: "",
+              };
+            });
             hfNarrationPaths = await generateSceneTTS(
-              hfBrief.scenes.map((s) => ({ caption: s.headline, kicker: s.kicker })),
+              ttsScenes,
               `HtmlSlides-${renderResult.jobId}`,
               hfProfile.id,
               (msg) => send({ type: "tts_note", text: msg }),
               hfProfile.engine,
               creative.captionTone,
               creative.motionFeel,
+              hfRoast,
             );
             const narrated = hfNarrationPaths.filter(Boolean).length;
             send({
@@ -1791,7 +2485,6 @@ export async function POST(req: NextRequest) {
         });
         send({ type: "validation", success: true, output: "" });
         send({ type: "done" });
-        ctrl.close();
         return;
       }
 
@@ -1807,14 +2500,11 @@ export async function POST(req: NextRequest) {
         const analysisResults = await Promise.all(
           attachments.map((a) => analyzeImage(a.path, a.name))
         );
-        const analyses: ImageStats[] = analysisResults.filter(
-          (s): s is ImageStats => s !== null
-        );
-        if (!analyses.length) {
+        if (!analysisResults.some(Boolean)) {
           send({ type: "error", content: "Couldn't read any of the uploaded images from disk." });
-          ctrl.close();
           return;
         }
+        const analyses = analysesForAttachments(attachments, analysisResults);
 
         // Stage 1 — vision pre-pass: describe each image in parallel so Gemma
         // writes captions grounded in what's actually on screen.
@@ -1826,15 +2516,38 @@ export async function POST(req: NextRequest) {
           brightness: a.brightness,
         }));
         if (useVision) {
-          const batchCap = Math.min(analyses.length, VISION_BATCH_CAP);
-          send({ type: "status", text: `Vision pass · reading ${batchCap} image(s) in batch…` });
+          send({
+            type: "status",
+            text: `Vision pass · ${analyses.length} image(s) in ${Math.ceil(analyses.length / VISION_CHUNK_SIZE)} batch(es)…`,
+          });
           const batchNotes = await describeImagesBatch(analyses, creative.captionTone);
           visionNotes = visionNotes.map((base, i) => batchNotes[i] ?? base);
           visionNotes.forEach((note) => send({ type: "vision_note", note }));
+        } else {
+          analyses.forEach((a, i) => {
+            send({
+              type: "vision_note",
+              note: {
+                path: a.path,
+                subject: `Photo ${i + 1} (${a.name}) — Vision is off; turn it on for AI scene reads, or describe the roast in the prompt.`,
+                mood: "",
+                palette: [a.dominant],
+                brightness: a.brightness,
+              },
+            });
+          });
         }
 
         send({ type: "status", text: `Brain pass · creative director planning scenes…` });
-        const { concept: reelConcept, brief: reelBrief } = await runBrainPass(userMessage, visionNotes, aspect, creative, targetDurationSec, maxScenes);
+        const { concept: reelConcept, brief: reelBrief } = await runBrainPass(
+          userMessage,
+          visionNotes,
+          attachments,
+          aspect,
+          creative,
+          targetDurationSec,
+          effectiveMaxScenes
+        );
         if (reelConcept.title) send({ type: "brain_concept", concept: reelConcept });
         if (reelBrief) send({ type: "director_brief", brief: reelBrief });
 
@@ -1846,7 +2559,7 @@ export async function POST(req: NextRequest) {
           visionNotes,
           aspect,
           pace,
-          maxScenes,
+          effectiveMaxScenes,
           creative,
           targetDurationSec,
           reelBrief
@@ -1863,14 +2576,12 @@ export async function POST(req: NextRequest) {
           );
         } catch (e) {
           send({ type: "error", content: `Ollama error: ${e}` });
-          ctrl.close();
           return;
         }
 
         const jsonStr = extractJson(response);
         if (!jsonStr) {
           send({ type: "error", content: "Gemma didn't output a JSON block. Try again." });
-          ctrl.close();
           return;
         }
 
@@ -1879,16 +2590,50 @@ export async function POST(req: NextRequest) {
           parsed = JSON.parse(jsonStr);
         } catch (e) {
           send({ type: "error", content: `Invalid JSON from Gemma: ${(e as Error).message}` });
-          ctrl.close();
           return;
         }
 
         const validPaths = new Set(attachments.map((a) => a.path));
         const copyLimits = copyLimitsForDuration(targetDurationSec);
-        const validation = validateReelSpec(parsed, validPaths, copyLimits, maxScenes);
+        const reelIntent = detectCreativeIntent(userMessage);
+        /** Comedy burns use the same anti–LinkedIn rules as explicit roasts. */
+        const roastLikeCopy = reelIntent.isRoast || reelIntent.isComedy;
+        const imageOrder = attachments.map((a) => a.path);
+
+        let validation = validateReelSpec(parsed, validPaths, copyLimits, effectiveMaxScenes, {
+          roastCopyCheck: roastLikeCopy,
+          enforceImageOrder: imageOrder,
+        });
+
+        const repairableReel =
+          roastLikeCopy &&
+          !validation.ok &&
+          /jargon|startup|duplicate|exactly|must use|only once|more\s+than|scenes has|required|not one of/i.test(
+            validation.error
+          );
+
+        if (repairableReel) {
+          send({ type: "status", text: "Repair pass · fixing scene order and/or roast copy…" });
+          const repaired = await repairReelJsonForRoast(
+            JSON.stringify(parsed),
+            userMessage,
+            imageOrder
+          );
+          if (repaired) {
+            try {
+              parsed = JSON.parse(repaired);
+              validation = validateReelSpec(parsed, validPaths, copyLimits, effectiveMaxScenes, {
+                roastCopyCheck: roastLikeCopy,
+                enforceImageOrder: imageOrder,
+              });
+            } catch {
+              /* keep prior validation error */
+            }
+          }
+        }
+
         if (!validation.ok) {
           send({ type: "error", content: `Schema error: ${validation.error}` });
-          ctrl.close();
           return;
         }
         const spec = validation.spec;
@@ -1908,13 +2653,13 @@ export async function POST(req: NextRequest) {
           .slice(0, 8);
         const componentName = slugifyTitle(spec.title, hash || "Gen");
         const outPath = `remotion/compositions/${componentName}.tsx`;
-        const fullOut = path.join(PROJECT_DIR, outPath);
+        const fullOut = projectPath(outPath);
 
         // TTS narration pass (optional — only if Voicebox is running and user opted in)
         let sceneTTSPaths: string[] = [];
         if (useTTS) {
           send({ type: "tts_note", text: "Voicebox · checking connection…" });
-          const profile = await resolveProfileForNarration(ttsVoice);
+          const profile = await resolveVoiceProfile(ttsVoice);
           if (profile) {
             if (profile.name.includes("Auto narration")) {
               send({
@@ -1931,6 +2676,7 @@ export async function POST(req: NextRequest) {
               profile.engine,
               creative.captionTone,
               creative.motionFeel,
+              detectCreativeIntent(userMessage).isRoast,
             );
             const narrated = sceneTTSPaths.filter(Boolean).length;
             send({
@@ -1973,7 +2719,6 @@ export async function POST(req: NextRequest) {
         if (!ok) {
           try { fs.unlinkSync(fullOut); } catch { /* already gone */ }
           send({ type: "error", content: `TypeScript error in wrapper:\n${error}` });
-          ctrl.close();
           return;
         }
 
@@ -1998,7 +2743,6 @@ export async function POST(req: NextRequest) {
         });
         send({ type: "validation", success: true, output: "" });
         send({ type: "done" });
-        ctrl.close();
         return;
       }
 
@@ -2009,7 +2753,7 @@ export async function POST(req: NextRequest) {
       const durationInFrames = Math.round(targetDurationSec * 30);
 
       if (filePath) {
-        const full = path.join(PROJECT_DIR, filePath);
+        const full = projectPath(filePath);
         try {
           fileContent = fs.readFileSync(full, "utf-8");
           send({ type: "status", text: `Editing ${filePath}…` });
@@ -2024,7 +2768,15 @@ export async function POST(req: NextRequest) {
       }
 
       send({ type: "status", text: `Brain pass · creative director planning your composition…` });
-      const { concept: freeformConcept, brief: freeformBrief } = await runBrainPass(userMessage, [], aspect, creative, targetDurationSec, maxScenes);
+      const { concept: freeformConcept, brief: freeformBrief } = await runBrainPass(
+        userMessage,
+        [],
+        null,
+        aspect,
+        creative,
+        targetDurationSec,
+        maxScenes
+      );
       if (freeformConcept.title) send({ type: "brain_concept", concept: freeformConcept });
       if (freeformBrief) send({ type: "director_brief", brief: freeformBrief });
 
@@ -2034,20 +2786,21 @@ export async function POST(req: NextRequest) {
 
       let response = "";
       try {
+        // Freeform TSX code-gen can produce large components — allow extra time.
+        const freeformTimeout = Math.max(STREAM_TIMEOUT_MS, Math.round(targetDurationSec * 3_000));
         response = await streamOllama(prompt, (tok) => send({ type: "token", tok }), {
           temperature: freeformTemperature(creative),
           num_predict: freeformNumPredict(targetDurationSec),
+          timeoutMs: freeformTimeout,
         });
       } catch (e) {
         send({ type: "error", content: `Ollama error: ${e}` });
-        ctrl.close();
         return;
       }
 
       const rawCode = extractCode(response);
       if (!rawCode) {
         send({ type: "error", content: "Gemma didn't output a code block. Rephrase and try again." });
-        ctrl.close();
         return;
       }
       const code = autofixCode(rawCode);
@@ -2061,7 +2814,6 @@ export async function POST(req: NextRequest) {
       const firstBad = bad.find((b) => b.hit);
       if (firstBad) {
         send({ type: "error", content: `Invalid Remotion code: ${firstBad.msg}. Try again.` });
-        ctrl.close();
         return;
       }
 
@@ -2075,7 +2827,7 @@ export async function POST(req: NextRequest) {
       const normalized = normalizeExportName(code, expectedName);
 
       send({ type: "status", text: `Writing ${outPath}…` });
-      const fullOut = path.join(PROJECT_DIR, outPath);
+      const fullOut = projectPath(outPath);
       const backup = fs.existsSync(fullOut) ? fs.readFileSync(fullOut, "utf-8") : null;
       fs.mkdirSync(path.dirname(fullOut), { recursive: true });
       fs.writeFileSync(fullOut, normalized, "utf-8");
@@ -2083,15 +2835,14 @@ export async function POST(req: NextRequest) {
 
       // Validate BEFORE touching Root.tsx — restore backup or delete new file on failure.
       send({ type: "status", text: "Checking for errors…" });
-      const { ok, error } = quickValidate(path.join(PROJECT_DIR, outPath));
+      const { ok, error } = quickValidate(projectPath(outPath));
       if (!ok) {
         if (backup) {
-          fs.writeFileSync(path.join(PROJECT_DIR, outPath), backup, "utf-8");
+          fs.writeFileSync(projectPath(outPath), backup, "utf-8");
         } else {
-          try { fs.unlinkSync(path.join(PROJECT_DIR, outPath)); } catch { /* already gone */ }
+          try { fs.unlinkSync(projectPath(outPath)); } catch { /* already gone */ }
         }
         send({ type: "error", content: `TypeScript error in generated code:\n${error}` });
-        ctrl.close();
         return;
       }
 
@@ -2111,7 +2862,12 @@ export async function POST(req: NextRequest) {
 
       send({ type: "validation", success: ok, output: error });
       send({ type: "done" });
-      ctrl.close();
+    } catch (unexpected: unknown) {
+      const msg = unexpected instanceof Error ? unexpected.message : String(unexpected);
+      send({ type: "error", content: `Agent error: ${msg}` });
+    } finally {
+      finishStream();
+    }
     },
   });
 

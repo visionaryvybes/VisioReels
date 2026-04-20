@@ -111,7 +111,6 @@ Return ONLY the JSON.`;
         model: MODEL,
         messages: [{ role: "user", content: prompt, images: [b64] }],
         stream: false,
-        think: false,
         format: "json",
         options: { temperature: 0.7, top_p: 0.95, num_ctx: 4096, num_predict: 500 },
       }),

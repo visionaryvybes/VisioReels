@@ -167,7 +167,6 @@ Return ONLY the JSON object now. Write like someone who actually posts on ${guid
         model: MODEL,
         messages: [{ role: "user", content: prompt }],
         stream: false,
-        think: false,
         format: "json",
         options: {
           temperature: 0.8,

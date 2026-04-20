@@ -66,7 +66,6 @@ Current body:  ${JSON.stringify(body.bodyText ?? "")}`;
         model: MODEL,
         messages: [{ role: "user", content: prompt }],
         stream: false,
-        think: false,
         format: "json",
         options: { temperature: 0.75, top_p: 0.92, num_ctx: 2048, num_predict: 320 },
       }),
