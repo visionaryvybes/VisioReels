@@ -1769,6 +1769,68 @@ function findHtmlSlideCopyGuardIssues(
   );
 }
 
+function compactWords(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 2)
+    .filter((word) => !["the", "and", "with", "from", "into", "over", "through", "across", "within", "dense", "open"].includes(word));
+}
+
+function buildLiteralSceneFallback(
+  scene: ReelScene,
+  note: VisionNote | undefined,
+  index: number,
+  limits: { captionMax: number; kickerMax: number }
+): ReelScene {
+  const subject = (note?.subject ?? "").replace(/\.+$/g, "").trim();
+  const composition = (note?.composition ?? "").replace(/\.+$/g, "").trim();
+  const mood = (note?.mood ?? "").replace(/\.+$/g, "").trim();
+  const subjectWords = compactWords(subject);
+  const captionBase = subjectWords.slice(0, 4).join(" ") || `scene ${index + 1}`;
+  const caption = captionBase.toUpperCase().slice(0, limits.captionMax);
+
+  const kickerSource = composition || subject || mood || scene.kicker || "";
+  const kicker = kickerSource
+    .replace(/^subject\s+/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, limits.kickerMax);
+
+  const narrationBase = [subject, composition].filter(Boolean).join(". ");
+  const narration = narrationBase
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
+
+  return {
+    ...scene,
+    caption: caption || scene.caption,
+    kicker: kicker || scene.kicker,
+    narration: narration || scene.narration,
+  };
+}
+
+function locallyRepairWeakReelScenes(
+  spec: ReelSpec,
+  visionNotes: VisionNote[],
+  captionTone: HyperframesCaptionTone,
+  limits: { captionMax: number; kickerMax: number }
+): ReelSpec {
+  const byPath = new Map(visionNotes.map((n) => [n.path, n]));
+  return {
+    ...spec,
+    scenes: spec.scenes.map((scene, index) => {
+      const issues = findReelSceneCopyGuardIssues(scene, index, captionTone);
+      if (!issues.some((issue) => /weak phrases|thin copy|banned phrases/i.test(issue))) {
+        return scene;
+      }
+      return buildLiteralSceneFallback(scene, byPath.get(scene.src), index, limits);
+    }),
+  };
+}
+
 async function repairHtmlSlidesCopyGuard(
   rawDeck: string,
   userBrief: string,
@@ -3273,6 +3335,21 @@ export async function POST(req: NextRequest) {
                   /* keep prior validation error */
                 }
               }
+            }
+
+            if (!validation.ok && /banned phrases|weak phrases|thin copy/i.test(validation.error) && !roastLikeCopy) {
+              const locallyRepaired = locallyRepairWeakReelScenes(
+                applyVisionTextPlacement(parsed as ReelSpec, visionNotes),
+                visionNotes,
+                creative.captionTone,
+                copyLimits
+              );
+              parsed = locallyRepaired;
+              validation = validateReelSpec(parsed, validPaths, copyLimits, effectiveMaxScenes, {
+                roastCopyCheck: roastLikeCopy,
+                copyGuardTone: creative.captionTone,
+                enforceImageOrder: imageOrder,
+              });
             }
           }
         }
