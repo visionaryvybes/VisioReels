@@ -54,3 +54,4 @@ next-env.d.ts
 !/public/uploads/.gitkeep
 /public/html-renders/*
 !/public/html-renders/.gitkeep
+public/tts/*.wav

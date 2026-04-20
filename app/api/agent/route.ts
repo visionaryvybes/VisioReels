@@ -23,6 +23,8 @@ import type { ConceptBrief } from "@/lib/concept-brief";
 import { parseDirectorBrief, briefToConceptCompat, type DirectorBrief } from "@/lib/director-brief";
 import { buildContextQueries, fetchWebContext, formatWebContext } from "@/lib/web-context";
 import { generateSpeech, resolveProfileForNarration } from "@/lib/voicebox";
+import { buildVoiceDirection, buildNarrationText, type CaptionTone, type MotionFeel } from "@/lib/voice-director";
+import { buildCulturalContext, type Platform } from "@/lib/cultural-context";
 
 const PROJECT_DIR = process.cwd();
 const OLLAMA_BASE = (process.env.OLLAMA_URL ?? "http://localhost:11434").replace(/\/$/, "");
@@ -670,6 +672,39 @@ function buildReelPrompt(
   const aspectMeta = ASPECTS[aspect];
   const paceMeta = PACE[pace];
   const creativeBlock = buildHyperframesCreativeBlock(creative);
+
+  // Map caption tone to platform (best match for cultural context)
+  const platformForTone: Record<string, Platform> = {
+    hype: "instagram",
+    social: "tiktok",
+    corporate: "linkedin",
+    tutorial: "x",
+    storytelling: "instagram",
+  };
+  const platform: Platform = platformForTone[creative.captionTone ?? "social"] ?? "instagram";
+  const contentTypes = visionNotes.flatMap((n) => (n.content_type ? [n.content_type] : []));
+  const copyStyles = visionNotes.flatMap((n) => (n.copy_style ? [n.copy_style] : []));
+  const culturalBlock = buildCulturalContext({
+    brief: userRequest,
+    platform,
+    captionTone: (creative.captionTone ?? "social") as Parameters<typeof buildCulturalContext>[0]["captionTone"],
+    contentTypes,
+    copyStyles,
+  });
+
+  // Build accent suggestion block from image palettes — helps Gemma pick on-image colors
+  const accentSuggestions = visionNotes
+    .filter((n) => n.palette.length > 0)
+    .slice(0, attachments.length)
+    .map((n, i) => {
+      const top = n.palette.slice(0, 3);
+      return `  Image ${i + 1}: dominant palette [${top.join(", ")}] → suggest accent from these`;
+    })
+    .join("\n");
+  const colorBlock = accentSuggestions
+    ? `═══ ACCENT COLOR GUIDE ═══\nMatch accent hex to the image's dominant palette — not a random color:\n${accentSuggestions}\n`
+    : "";
+
   const criticalRules = `CRITICAL RULES (read before schema):
 - Every scene.src MUST be copied letter-for-letter from the image list below — no paraphrasing
 - scenes.length: 2 to ${maxScenes}
@@ -702,6 +737,9 @@ STRICT RULE: The caption and kicker above are APPROVED copy — paste them verba
 Pace: ${pace.toUpperCase()} — ${paceMeta.blurb}.
 
 ${creativeBlock}
+${culturalBlock}
+
+${colorBlock}
 ${criticalRules}
 ${remixBlock}
 ${lingoBlock}
@@ -953,6 +991,22 @@ EXECUTION RULES:
 `;
   })() : "";
 
+  // Cultural context for HTML slides — same platform detection as reel
+  const slidePlatformMap: Record<string, Platform> = {
+    hype: "instagram", social: "tiktok", corporate: "linkedin",
+    tutorial: "x", storytelling: "instagram",
+  };
+  const slidePlatform: Platform = slidePlatformMap[creative.captionTone ?? "social"] ?? "instagram";
+  const contentTypesForSlide = visionNotes.flatMap((n) => (n.content_type ? [n.content_type] : []));
+  const copyStylesForSlide = visionNotes.flatMap((n) => (n.copy_style ? [n.copy_style] : []));
+  const slideCulturalBlock = buildCulturalContext({
+    brief: userRequest,
+    platform: slidePlatform,
+    captionTone: (creative.captionTone ?? "social") as Parameters<typeof buildCulturalContext>[0]["captionTone"],
+    contentTypes: contentTypesForSlide,
+    copyStyles: copyStylesForSlide,
+  });
+
   return `You are a senior motion designer + art director. The user wants a video made of separate HTML slides, each rendered as a PNG (${w}×${h}px).
 
 Each slide = ONE self-contained HTML fragment (body content only — no <!DOCTYPE>). Use inline styles on a single root wrapper. CSS <style> blocks allowed (for @keyframes animations). No external JavaScript.
@@ -991,6 +1045,8 @@ CSS @keyframes in a <style> tag are fully supported — use them for: fade-in, s
 HyperFrames shader vocabulary (inspire visual language — these are the transition moods):
 domain-warp · ridged-burn · whip-pan · sdf-iris · ripple-waves · gravitational-lens ·
 cinematic-zoom · chromatic-split · glitch · swirl-vortex · thermal-distortion · flash-through-white · cross-warp-morph · light-leak
+
+${slideCulturalBlock}
 
 CREATIVE DIRECTIVE:
 - Motion feel: ${creative.motionFeel}
@@ -1218,6 +1274,20 @@ function buildPrompt(
 - NO JSON, NO prose, NO "Here is…", NO reel specs, NO markdown headings
 - The code block must be a complete, compilable .tsx React component`;
 
+  // Cultural context for HyperFrames HTML slides
+  const hfPlatformMap: Record<string, Platform> = {
+    hype: "instagram", social: "tiktok", corporate: "linkedin",
+    tutorial: "x", storytelling: "instagram",
+  };
+  const hfPlatform: Platform = hfPlatformMap[creative.captionTone ?? "social"] ?? "instagram";
+  const hfCulturalBlock = buildCulturalContext({
+    brief: userRequest,
+    platform: hfPlatform,
+    captionTone: (creative.captionTone ?? "social") as Parameters<typeof buildCulturalContext>[0]["captionTone"],
+    contentTypes: [],
+    copyStyles: [],
+  });
+
   const fps = 30;
   const secs = Math.round(durationInFrames / fps);
   const orient = canvasW >= canvasH ? "landscape or square" : "portrait";
@@ -1235,10 +1305,10 @@ function buildPrompt(
   if (filePath && fileContent) {
     const lines = fileContent.split("\n");
     const trimmed = lines.length > 120 ? lines.slice(0, 120).join("\n") + "\n// ... (truncated)" : fileContent;
-    return `${hfBlock}\n\n${codeVisualBlock}\n\n${rules}\n${primitivesImportLine}\n- ${determinism}\n\n${layoutSafety}\n\n${strictFormat}${directorBlock}\n\nCURRENT FILE (${filePath}):\n\`\`\`tsx\n${trimmed}\n\`\`\`\n\nTASK: ${userRequest}\n\n${runtimeCopyBlock}\n\nOutput the COMPLETE modified file in a single \`\`\`tsx block. No explanations.`;
+    return `${hfBlock}\n\n${hfCulturalBlock}\n\n${codeVisualBlock}\n\n${rules}\n${primitivesImportLine}\n- ${determinism}\n\n${layoutSafety}\n\n${strictFormat}${directorBlock}\n\nCURRENT FILE (${filePath}):\n\`\`\`tsx\n${trimmed}\n\`\`\`\n\nTASK: ${userRequest}\n\n${runtimeCopyBlock}\n\nOutput the COMPLETE modified file in a single \`\`\`tsx block. No explanations.`;
   }
 
-  return `${hfBlock}\n\n${codeVisualBlock}\n\n${rules}\n${primitivesImportLine}\n\n${layoutSafety}\n\n${strictFormat}${directorBlock}\n\nTASK: ${userRequest}\n\nSPECS: ${secs}s = ${durationInFrames}fr @ ${fps}fps, canvas ${canvasW}×${canvasH} (${orient}) — match this composition size in all layout math.\n${runtimeCopyBlock}\nUse <Sequence> or <TransitionSeries> for multiple scenes with cinematic transitions aligned to the creative directive.\n\nOutput format (exactly this shape, nothing else):\n\`\`\`tsx\nimport { useCurrentFrame, ... } from "remotion";\nexport const YourComponentName: React.FC = () => { ... };\n\`\`\`\nFILE: remotion/compositions/YourComponentName.tsx`;
+  return `${hfBlock}\n\n${hfCulturalBlock}\n\n${codeVisualBlock}\n\n${rules}\n${primitivesImportLine}\n\n${layoutSafety}\n\n${strictFormat}${directorBlock}\n\nTASK: ${userRequest}\n\nSPECS: ${secs}s = ${durationInFrames}fr @ ${fps}fps, canvas ${canvasW}×${canvasH} (${orient}) — match this composition size in all layout math.\n${runtimeCopyBlock}\nUse <Sequence> or <TransitionSeries> for multiple scenes with cinematic transitions aligned to the creative directive.\n\nOutput format (exactly this shape, nothing else):\n\`\`\`tsx\nimport { useCurrentFrame, ... } from "remotion";\nexport const YourComponentName: React.FC = () => { ... };\n\`\`\`\nFILE: remotion/compositions/YourComponentName.tsx`;
 }
 
 function hasModuleLevelHook(code: string): boolean {
@@ -1382,24 +1452,37 @@ async function generateSceneTTS(
   componentName: string,
   profileId: string,
   onProgress: (msg: string) => void,
-  engine?: string
+  engine?: string,
+  captionTone?: string,
+  motionFeel?: string,
 ): Promise<string[]> {
   const publicDir = path.join(PROJECT_DIR, "public", "tts");
   fs.mkdirSync(publicDir, { recursive: true });
 
+  const direction = buildVoiceDirection({
+    captionTone: (captionTone ?? "social") as CaptionTone,
+    motionFeel: (motionFeel ?? "smooth") as MotionFeel,
+    contentSeed: componentName,
+  });
+
   const paths: string[] = [];
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i];
-    // Prefer dedicated narration text, fall back to caption + kicker
-    const text = (scene as { caption: string; kicker?: string; narration?: string }).narration
-      || [scene.caption, scene.kicker].filter(Boolean).join(". ").trim();
+    const text = buildNarrationText({
+      caption: scene.caption,
+      kicker: scene.kicker,
+      narration: scene.narration,
+      captionTone: (captionTone ?? "social") as CaptionTone,
+      sceneIndex: i,
+      totalScenes: scenes.length,
+    });
     if (!text) { paths.push(""); continue; }
 
     const filename = `${componentName}-scene-${i}.wav`;
     const outputPath = path.join(publicDir, filename);
     onProgress(`TTS scene ${i + 1}/${scenes.length}…`);
 
-    const ok = await generateSpeech({ text, profileId, outputPath, engine });
+    const ok = await generateSpeech({ text, profileId, outputPath, engine, ...direction });
     paths.push(ok ? `tts/${filename}` : "");
   }
   return paths;
@@ -1618,7 +1701,9 @@ export async function POST(req: NextRequest) {
               `HtmlSlides-${renderResult.jobId}`,
               hfProfile.id,
               (msg) => send({ type: "tts_note", text: msg }),
-              hfProfile.engine
+              hfProfile.engine,
+              creative.captionTone,
+              creative.motionFeel,
             );
             const narrated = hfNarrationPaths.filter(Boolean).length;
             send({
@@ -1798,7 +1883,9 @@ export async function POST(req: NextRequest) {
               componentName,
               profile.id,
               (msg) => send({ type: "tts_note", text: msg }),
-              profile.engine
+              profile.engine,
+              creative.captionTone,
+              creative.motionFeel,
             );
             const narrated = sceneTTSPaths.filter(Boolean).length;
             send({

@@ -27,6 +27,9 @@ import { THEPLASTICMANIFESTO } from "./compositions/THEPLASTICMANIFESTO";
 import { TheBlueprintDesigning } from "./compositions/TheBlueprintDesigning";
 import { PlasticDecay } from "./compositions/PlasticDecay";
 import { SystemOverload } from "./compositions/SystemOverload";
+import { NeonNoirDrive } from "./compositions/NeonNoirDrive";
+import { ArchitecturalNarrative } from "./compositions/ArchitecturalNarrative";
+import { ArchitecturalDreamscape } from "./compositions/ArchitecturalDreamscape";
 import { Reel, DEFAULT_SCENES } from "./compositions/Reel";
 import {
   computeReelDuration,
@@ -123,6 +126,9 @@ export const RemotionRoot: React.FC = () => {
       <Composition id="TheBlueprintDesigning" component={TheBlueprintDesigning} durationInFrames={1348} fps={30} width={1920} height={1080} defaultProps={{}} />
       <Composition id="PlasticDecay" component={PlasticDecay} durationInFrames={1344} fps={30} width={1080} height={1920} defaultProps={{}} />
       <Composition id="SystemOverload" component={SystemOverload} durationInFrames={1354} fps={30} width={1080} height={1920} defaultProps={{}} />
+      <Composition id="NeonNoirDrive" component={NeonNoirDrive} durationInFrames={1348} fps={30} width={1080} height={1920} defaultProps={{}} />
+      <Composition id="ArchitecturalNarrative" component={ArchitecturalNarrative} durationInFrames={1347} fps={30} width={1920} height={1080} defaultProps={{}} />
+      <Composition id="ArchitecturalDreamscape" component={ArchitecturalDreamscape} durationInFrames={2702} fps={30} width={1920} height={1080} defaultProps={{}} />
     </>
   );
 };

@@ -174,16 +174,25 @@ export async function generateSpeech(opts: {
   outputPath: string;
   engine?: string;
   language?: string;
+  instruct?: string;
+  seed?: number;
+  crossfade_ms?: number;
+  effects_chain?: Array<{ type: string; params?: Record<string, number> }>;
 }): Promise<boolean> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 30000);
-    const body: Record<string, string> = {
+    const body: Record<string, unknown> = {
       profile_id: opts.profileId,
       text: opts.text,
+      normalize: true,
     };
     if (opts.engine) body.engine = opts.engine;
     if (opts.language) body.language = opts.language;
+    if (opts.instruct) body.instruct = opts.instruct;
+    if (opts.seed !== undefined) body.seed = opts.seed;
+    if (opts.crossfade_ms !== undefined) body.crossfade_ms = opts.crossfade_ms;
+    if (opts.effects_chain?.length) body.effects_chain = opts.effects_chain;
 
     const res = await fetch(`${VOICEBOX_BASE}/generate/stream`, {
       method: "POST",

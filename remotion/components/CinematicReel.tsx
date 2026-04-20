@@ -53,6 +53,8 @@ export interface ReelScene {
   accent?: string;
   /** Override the transition INTO this scene. Ignored for scene 0. */
   transition?: TransitionKind;
+  /** Natural spoken narration for TTS — used by agent route, stripped before render. */
+  narration?: string;
 }
 
 export type ReelDecorStyle = "none" | "minimal" | "film";
@@ -90,6 +92,18 @@ export const computeReelDuration = (
   const transitions = Math.max(0, sceneCount - 1) * transLen;
   return body + outroPad - transitions;
 };
+
+// ─── Color intelligence helpers ──────────────────────────────────────────────
+
+function luminance(hex: string): number {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+  if (full.length !== 6) return 0.5;
+  const r = parseInt(full.slice(0, 2), 16) / 255;
+  const g = parseInt(full.slice(2, 4), 16) / 255;
+  const b = parseInt(full.slice(4, 6), 16) / 255;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
 
 // ─── Scene resolution (normalise user input) ─────────────────────────────────
 
