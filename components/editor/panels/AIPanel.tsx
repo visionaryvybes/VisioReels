@@ -977,7 +977,7 @@ export function AIPanel() {
           }}
         />
         <p style={{ margin: 0, padding: '0 16px 10px', fontSize: 9, color: '#555', fontFamily: 'var(--font-dm-mono), monospace', lineHeight: 1.45 }}>
-          Without media: full Remotion + SVG power (graphs, grids, typography). Attach images for the cinematic reel path. Say "photo" or "Unsplash" if you want stock imagery.
+          Without media: full Remotion + SVG power (graphs, grids, typography). Attach images for the cinematic reel path. Say &quot;photo&quot; or &quot;Unsplash&quot; if you want stock imagery.
         </p>
         <div style={{ display: 'flex', borderTop: '1px solid #333', padding: '12px 16px', justifyContent: 'space-between', alignItems: 'center', background: '#050505' }}>
           <button

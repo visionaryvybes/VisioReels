@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPreset, SLIDE_PRESETS } from "@/lib/slide-presets";
+import { findBannedPhrases, sanitizeOneLine, sanitizeParagraph } from "@/lib/copy-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -27,6 +28,24 @@ function extractJson(raw: string): unknown | null {
     try { return JSON.parse(raw.slice(first, last + 1)); } catch { return null; }
   }
   return null;
+}
+
+async function rewriteCopy(prompt: string): Promise<{ title?: string; body?: string } | null> {
+  const res = await fetch(OLLAMA_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [{ role: "user", content: prompt }],
+      stream: false,
+      format: "json",
+      options: { temperature: 0.75, top_p: 0.92, num_ctx: 2048, num_predict: 320 },
+    }),
+  });
+  if (!res.ok) throw new Error(`Ollama ${res.status}`);
+  const j = await res.json();
+  const raw = (j?.message?.content ?? "") as string;
+  return extractJson(raw) as { title?: string; body?: string } | null;
 }
 
 export async function POST(req: NextRequest) {
@@ -59,33 +78,32 @@ Return ONE JSON object exactly: { "title": string, "body": string }.
 Current title: ${JSON.stringify(body.title)}
 Current body:  ${JSON.stringify(body.bodyText ?? "")}`;
 
-    const res = await fetch(OLLAMA_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [{ role: "user", content: prompt }],
-        stream: false,
-        format: "json",
-        options: { temperature: 0.75, top_p: 0.92, num_ctx: 2048, num_predict: 320 },
-      }),
-    });
-    if (!res.ok) throw new Error(`Ollama ${res.status}`);
-    const j = await res.json();
-    const raw = (j?.message?.content ?? "") as string;
-    const parsed = extractJson(raw) as { title?: string; body?: string } | null;
+    let parsed = await rewriteCopy(prompt);
+
+    const firstTitle = typeof parsed?.title === "string" ? sanitizeOneLine(parsed.title, preset.maxTitleChars) : "";
+    const firstBody = typeof parsed?.body === "string" ? sanitizeParagraph(parsed.body, preset.maxBodyChars) : "";
+    const banned = findBannedPhrases(`${firstTitle}\n${firstBody}`);
+    if (!parsed || typeof parsed.title !== "string" || banned.length > 0) {
+      parsed = await rewriteCopy(
+        `${prompt}
+
+Previous attempt had issues${banned.length ? ` (${banned.join(", ")})` : ""}.
+Rewrite again with concrete language and no banned AI/marketing phrases.`
+      );
+    }
 
     if (!parsed || typeof parsed.title !== "string") {
       return NextResponse.json({ error: "bad model response" }, { status: 502 });
     }
 
-    const title = parsed.title.trim().slice(0, preset.maxTitleChars);
+    const title = sanitizeOneLine(parsed.title, preset.maxTitleChars);
+    const bodyText = typeof parsed.body === "string" ? sanitizeParagraph(parsed.body, preset.maxBodyChars) : (body.bodyText ?? "");
     return NextResponse.json({
       title:
         preset.titleCase === "upper" ? title.toUpperCase()
         : preset.titleCase === "lower" ? title.toLowerCase()
         : title,
-      body: typeof parsed.body === "string" ? parsed.body.trim().slice(0, preset.maxBodyChars) : (body.bodyText ?? ""),
+      body: bodyText,
       mode,
     });
   } catch (e) {

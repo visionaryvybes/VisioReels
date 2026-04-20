@@ -8,16 +8,32 @@ const BIN = path.join(PROJECT_DIR, "node_modules/.bin");
 
 export async function POST(req: NextRequest) {
   let composition: unknown;
+  let inputProps: unknown;
   try {
-    ({ composition } = await req.json());
+    ({ composition, inputProps } = await req.json());
   } catch {
-    return NextResponse.json({ error: "request body must be JSON with { composition }" }, { status: 400 });
+    return NextResponse.json(
+      { error: "request body must be JSON with { composition, inputProps? }" },
+      { status: 400 }
+    );
   }
   if (typeof composition !== "string" || !composition.trim()) {
     return NextResponse.json({ error: "composition required" }, { status: 400 });
   }
   if (!/^[a-zA-Z0-9_-]+$/.test(composition)) {
     return NextResponse.json({ error: "invalid composition id" }, { status: 400 });
+  }
+  if (inputProps !== undefined) {
+    const invalidInputProps =
+      inputProps === null ||
+      Array.isArray(inputProps) ||
+      typeof inputProps !== "object";
+    if (invalidInputProps) {
+      return NextResponse.json(
+        { error: "inputProps must be a JSON object when provided" },
+        { status: 400 }
+      );
+    }
   }
 
   const outDir = path.join(PROJECT_DIR, "out");
@@ -29,11 +45,23 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     start(ctrl) {
       const send = (d: object) => ctrl.enqueue(enc.encode(`data: ${JSON.stringify(d)}\n\n`));
-      send({ type: "start", composition });
+      send({ type: "start", composition, hasInputProps: inputProps !== undefined });
+
+      const renderArgs = [
+        "render",
+        "remotion/index.ts",
+        composition,
+        outFile,
+        "--log=verbose",
+      ];
+
+      if (inputProps !== undefined) {
+        renderArgs.push("--props", JSON.stringify(inputProps));
+      }
 
       const child = spawn(
         `${BIN}/remotion`,
-        ["render", "remotion/index.ts", composition, outFile, "--log=verbose"],
+        renderArgs,
         {
           cwd: PROJECT_DIR,
           env: { ...process.env, PATH: `${BIN}:${process.env.PATH}`, FORCE_COLOR: "0" },

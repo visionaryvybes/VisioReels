@@ -112,9 +112,14 @@ export function buildNarrationText(opts: {
 
   parts.push(cleanCaption);
 
-  // For hype tone: keep short and punchy — don't over-narrate
+  const stitched = parts.join(". ").replace(/\.\s*\./g, ".").trim();
+
+  // For hype tone: stay punchy, but avoid 1-3 word fragments that sound broken in TTS.
   if (captionTone === "hype") {
-    return parts[parts.length - 1]; // just the caption
+    if (parts.length > 1 && cleanCaption.split(/\s+/).filter(Boolean).length < 6) {
+      return stitched;
+    }
+    return cleanCaption;
   }
 
   // For social: add casual connector if kicker + caption are separate
@@ -122,5 +127,5 @@ export function buildNarrationText(opts: {
     return parts.join(" — ");
   }
 
-  return parts.join(". ").replace(/\.\s*\./g, ".").trim();
+  return stitched;
 }

@@ -258,6 +258,7 @@ export default function HtmlSlidesPage() {
                 compositionWidth={cw}
                 compositionHeight={ch}
                 fps={30}
+                acknowledgeRemotionLicense
                 controls
                 style={{ width: "100%", height: "100%" }}
                 inputProps={inputProps}

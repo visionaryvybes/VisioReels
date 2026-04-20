@@ -1,4 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  findBannedPhrases,
+  isThinText,
+  isWeakCta,
+  isWeakHook,
+  sanitizeOneLine,
+  sanitizeParagraph,
+} from "@/lib/copy-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -87,6 +95,41 @@ function extractJson(raw: string): unknown | null {
   return null;
 }
 
+async function generateCaption(prompt: string): Promise<{
+  hook?: string;
+  caption?: string;
+  hashtags?: string[];
+  cta?: string;
+} | null> {
+  const res = await fetch(OLLAMA_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [{ role: "user", content: prompt }],
+      stream: false,
+      format: "json",
+      options: {
+        temperature: 0.8,
+        top_p: 0.95,
+        top_k: 50,
+        repeat_penalty: 1.18,
+        num_ctx: 4096,
+        num_predict: 1400,
+      },
+    }),
+  });
+  if (!res.ok) throw new Error(`Ollama ${res.status}`);
+  const j = await res.json();
+  const raw = (j?.message?.content ?? "") as string;
+  return extractJson(raw) as {
+    hook?: string;
+    caption?: string;
+    hashtags?: string[];
+    cta?: string;
+  } | null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
@@ -160,35 +203,42 @@ ${manifest}
 
 Return ONLY the JSON object now. Write like someone who actually posts on ${guide.label}.`;
 
-    const res = await fetch(OLLAMA_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [{ role: "user", content: prompt }],
-        stream: false,
-        format: "json",
-        options: {
-          temperature: 0.8,
-          top_p: 0.95,
-          top_k: 50,
-          repeat_penalty: 1.18,
-          num_ctx: 4096,
-          num_predict: 1400,
-        },
-      }),
-    });
-    if (!res.ok) throw new Error(`Ollama ${res.status}`);
-    const j = await res.json();
-    const raw = (j?.message?.content ?? "") as string;
-    const parsed = extractJson(raw) as {
-      hook?: string;
-      caption?: string;
-      hashtags?: string[];
-      cta?: string;
-    } | null;
+    let parsed = await generateCaption(prompt);
 
-    if (!parsed || typeof parsed.caption !== "string") {
+    const sanitizeTags = (tags: string[] | undefined) =>
+      Array.isArray(tags)
+        ? tags
+            .filter((x): x is string => typeof x === "string")
+            .map((t) => t.trim().replace(/^#+/, "").replace(/\s+/g, "").toLowerCase())
+            .filter((t) => t.length >= 2 && t.length <= 40 && /^[a-z0-9_]+$/.test(t))
+        : [];
+    const evaluateParsed = (value: typeof parsed) => {
+      const hook = sanitizeOneLine(value?.hook ?? "", 90);
+      const caption = sanitizeParagraph(value?.caption ?? "", 2200);
+      const cta = sanitizeOneLine(value?.cta ?? "", 80);
+      const tags = sanitizeTags(value?.hashtags);
+      const issues: string[] = [];
+      if (!caption) issues.push("missing caption");
+      if (isWeakHook(hook)) issues.push("weak hook");
+      if (isThinText(caption, 8)) issues.push("thin caption");
+      if (isWeakCta(cta)) issues.push("weak cta");
+      if (findBannedPhrases(`${hook}\n${caption}\n${cta}`).length > 0) issues.push("banned phrases");
+      if (tags.length < minTags) issues.push("too few hashtags");
+      return { hook, caption, cta, tags, issues };
+    };
+
+    let evaluation = evaluateParsed(parsed);
+    if (!parsed || evaluation.issues.length > 0) {
+      parsed = await generateCaption(
+        `${prompt}
+
+Previous attempt had issues: ${evaluation.issues.join(", ") || "invalid schema"}.
+Rewrite again. Make the hook stronger, the CTA clearer, and the caption feel human and platform-native.`
+      );
+      evaluation = evaluateParsed(parsed);
+    }
+
+    if (!parsed || !evaluation.caption) {
       return NextResponse.json({ error: "bad model response" }, { status: 502 });
     }
 
@@ -202,10 +252,10 @@ Return ONLY the JSON object now. Write like someone who actually posts on ${guid
 
     return NextResponse.json({
       platform,
-      hook: typeof parsed.hook === "string" ? parsed.hook.trim().slice(0, 90) : "",
-      caption: parsed.caption.trim().slice(0, 2200),
+      hook: evaluation.hook,
+      caption: evaluation.caption,
       hashtags,
-      cta: typeof parsed.cta === "string" ? parsed.cta.trim().slice(0, 80) : guide.cta.split(",")[0].trim(),
+      cta: evaluation.cta || guide.cta.split(",")[0].trim(),
     });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message ?? "failed" }, { status: 500 });

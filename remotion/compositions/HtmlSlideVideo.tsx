@@ -27,7 +27,7 @@ function resolvePublicPath(src: string): string {
   return staticFile(src.replace(/^\.?\//, ""));
 }
 
-export { computeHtmlSlideVideoDuration } from "@/lib/html-slide-duration";
+export { computeHtmlSlideVideoDuration } from "../../lib/html-slide-duration";
 
 // Different presentation types have incompatible generics — widen to shared base
 type AnyPresentation = TransitionPresentation<Record<string, unknown>>;
@@ -51,7 +51,7 @@ const TRANSITIONS: TransitionFactory[] = [
 export const HtmlSlideVideo: React.FC<HtmlSlideVideoProps> = ({
   slidePaths,
   sceneLengthInFrames = 90,
-  transitionLengthInFrames = 18,
+  transitionLengthInFrames = 12,
   narrationPaths,
 }) => {
   const { width: vw, height: vh } = useVideoConfig();

@@ -1,89 +1,17 @@
 import type { Metadata } from "next";
-import {
-  Syne,
-  DM_Sans,
-  DM_Mono,
-  Playfair_Display,
-  Space_Grotesk,
-  Fraunces,
-  Archivo_Black,
-  Instrument_Serif,
-  Bricolage_Grotesque,
-} from "next/font/google";
 import "./globals.css";
 
-// frontend-design skill: distinctive fonts, never generic Inter/Roboto
-// Syne — geometric, futuristic display → headings & wordmark
-const syne = Syne({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-syne",
-  display: "swap",
-});
-
-// DM Sans — refined, slightly condensed body text (not Inter)
-const dmSans = DM_Sans({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
-  variable: "--font-dm-sans",
-  display: "swap",
-});
-
-// DM Mono — code blocks and technical readouts
-const dmMono = DM_Mono({
-  subsets: ["latin"],
-  weight: ["300", "400", "500"],
-  variable: "--font-dm-mono",
-  display: "swap",
-});
-
-// Editorial serif — slide typography preset "EDITORIAL"
-const playfair = Playfair_Display({
-  subsets: ["latin"],
-  weight: ["400", "700", "900"],
-  variable: "--font-playfair",
-  display: "swap",
-});
-
-// Swiss geometric — slide preset "SWISS"
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "700"],
-  variable: "--font-space-grotesk",
-  display: "swap",
-});
-
-// Warm contemporary serif — slide preset "MANIFESTO"
-const fraunces = Fraunces({
-  subsets: ["latin"],
-  weight: ["400", "700", "900"],
-  variable: "--font-fraunces",
-  display: "swap",
-});
-
-// Heavy sans — slide preset "BRUTAL"
-const archivoBlack = Archivo_Black({
-  subsets: ["latin"],
-  weight: ["400"],
-  variable: "--font-archivo-black",
-  display: "swap",
-});
-
-// Elegant single-weight serif — slide preset "QUIET"
-const instrumentSerif = Instrument_Serif({
-  subsets: ["latin"],
-  weight: ["400"],
-  variable: "--font-instrument-serif",
-  display: "swap",
-});
-
-// Variable contemporary — slide preset "ZINE"
-const bricolage = Bricolage_Grotesque({
-  subsets: ["latin"],
-  weight: ["300", "500", "700", "800"],
-  variable: "--font-bricolage",
-  display: "swap",
-});
+const fontVariables = {
+  "--font-syne": '"Syne", "Avenir Next Condensed", "Arial Narrow", "Trebuchet MS", system-ui, sans-serif',
+  "--font-dm-sans": '"DM Sans", "Avenir Next", "Segoe UI", system-ui, sans-serif',
+  "--font-dm-mono": '"DM Mono", "SFMono-Regular", "Cascadia Code", "Courier New", monospace',
+  "--font-playfair": '"Playfair Display", "Iowan Old Style", "Times New Roman", serif',
+  "--font-space-grotesk": '"Space Grotesk", "Avenir Next", "Segoe UI", system-ui, sans-serif',
+  "--font-fraunces": '"Fraunces", "Iowan Old Style", "Times New Roman", serif',
+  "--font-archivo-black": '"Archivo Black", Impact, Haettenschweiler, "Arial Black", sans-serif',
+  "--font-instrument-serif": '"Instrument Serif", "Baskerville", "Times New Roman", serif',
+  "--font-bricolage": '"Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif',
+} as React.CSSProperties;
 
 export const metadata: Metadata = {
   title: "VisioReels — Local AI Video Studio",
@@ -113,7 +41,8 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${syne.variable} ${dmSans.variable} ${dmMono.variable} ${playfair.variable} ${spaceGrotesk.variable} ${fraunces.variable} ${archivoBlack.variable} ${instrumentSerif.variable} ${bricolage.variable} dark`}
+      className="dark"
+      style={fontVariables}
       suppressHydrationWarning
     >
       <body

@@ -19,7 +19,17 @@ function InspectorSection({ title, children }: { title: string; children: React.
 }
 
 export function RightInspector() {
-  const { activeComposition, compositionConfig, aspect, pace, motionFeel, captionTone, transitionEnergy, targetDurationSec } = useEditorStore();
+  const {
+    activeComposition,
+    compositionConfig,
+    compositionInputProps,
+    aspect,
+    pace,
+    motionFeel,
+    captionTone,
+    transitionEnergy,
+    targetDurationSec,
+  } = useEditorStore();
   const [renderState, setRenderState] = useState<RenderState>('idle');
   const [renderProgress, setRenderProgress] = useState<RenderProgress>({ progress: 0, frame: 0, total: 0 });
   const [renderError, setRenderError] = useState<string | null>(null);
@@ -45,10 +55,19 @@ export function RightInspector() {
     setRenderProgress({ progress: 0, frame: 0, total: 0 });
 
     try {
+      const payload: {
+        composition: string;
+        inputProps?: Record<string, unknown>;
+      } = { composition: activeComposition };
+
+      if (compositionInputProps) {
+        payload.inputProps = compositionInputProps;
+      }
+
       const res = await fetch('/api/render-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ composition: activeComposition }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);

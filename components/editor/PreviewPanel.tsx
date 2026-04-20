@@ -332,6 +332,7 @@ export function PreviewPanel() {
                 compositionWidth={config.width}
                 compositionHeight={config.height}
                 style={{ width: '100%', height: '100%' }}
+                acknowledgeRemotionLicense
                 controls={false}
                 initialFrame={previewFrame}
                 {...(activeComposition === 'HtmlSlideVideo'

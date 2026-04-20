@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import sharp from "sharp";
 import { getPreset, SLIDE_PRESETS } from "@/lib/slide-presets";
+import { findBannedPhrases, sanitizeOneLine, sanitizeParagraph } from "@/lib/copy-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -49,6 +50,24 @@ function validateHex(s: string | undefined): string | undefined {
   if (!s) return undefined;
   const t = s.trim();
   return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(t) ? t : undefined;
+}
+
+async function generateSlide(prompt: string, b64: string): Promise<SlideIn | null> {
+  const res = await fetch(OLLAMA_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [{ role: "user", content: prompt, images: [b64] }],
+      stream: false,
+      format: "json",
+      options: { temperature: 0.7, top_p: 0.95, num_ctx: 4096, num_predict: 500 },
+    }),
+  });
+  if (!res.ok) throw new Error(`Ollama ${res.status}`);
+  const json = await res.json();
+  const raw = (json?.message?.content ?? "") as string;
+  return extractJson(raw) as SlideIn | null;
 }
 
 export async function POST(req: NextRequest) {
@@ -104,27 +123,25 @@ ${prevTitles.length ? `AVOID these titles already used: ${prevTitles.map((t) => 
 
 Return ONLY the JSON.`;
 
-    const res = await fetch(OLLAMA_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [{ role: "user", content: prompt, images: [b64] }],
-        stream: false,
-        format: "json",
-        options: { temperature: 0.7, top_p: 0.95, num_ctx: 4096, num_predict: 500 },
-      }),
-    });
-    if (!res.ok) throw new Error(`Ollama ${res.status}`);
-    const json = await res.json();
-    const raw = (json?.message?.content ?? "") as string;
-    const parsed = extractJson(raw) as SlideIn | null;
+    let parsed = await generateSlide(prompt, b64);
+    const banned = findBannedPhrases(
+      `${sanitizeOneLine(parsed?.title ?? "", preset.maxTitleChars)}\n${sanitizeParagraph(parsed?.body ?? "", preset.maxBodyChars)}`
+    );
+    if (!parsed || typeof parsed.title !== "string" || banned.length > 0) {
+      parsed = await generateSlide(
+        `${prompt}
+
+Previous attempt was weak${banned.length ? ` and used banned phrases (${banned.join(", ")})` : ""}.
+Regenerate with sharper, image-grounded language and no AI cliches.`,
+        b64
+      );
+    }
 
     if (!parsed || typeof parsed.title !== "string") {
       return NextResponse.json({ error: "bad response" }, { status: 502 });
     }
 
-    const title = parsed.title.trim().slice(0, preset.maxTitleChars);
+    const title = sanitizeOneLine(parsed.title, preset.maxTitleChars);
     const out = {
       title:
         preset.titleCase === "upper"
@@ -132,10 +149,10 @@ Return ONLY the JSON.`;
           : preset.titleCase === "lower"
           ? title.toLowerCase()
           : title,
-      body: typeof parsed.body === "string" ? parsed.body.trim().slice(0, preset.maxBodyChars) : "",
+      body: typeof parsed.body === "string" ? sanitizeParagraph(parsed.body, preset.maxBodyChars) : "",
       kicker:
         typeof parsed.kicker === "string" && parsed.kicker.trim()
-          ? parsed.kicker.trim().slice(0, 16)
+          ? sanitizeOneLine(parsed.kicker, 16)
           : `${String((body.index ?? 0) + 1).padStart(2, "0")} / ${String(body.total ?? 1).padStart(2, "0")}`,
       accent: validateHex(parsed.accent) ?? preset.accent,
       textAlign:
