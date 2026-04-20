@@ -9,40 +9,53 @@ export type ReelTypographyId =
   | 'fraunces';
 
 export type ReelDecorId = 'none' | 'minimal' | 'film';
+export type ReelThemeId =
+  | 'impact'
+  | 'brutal'
+  | 'editorial'
+  | 'swiss'
+  | 'terminal'
+  | 'manifesto';
 
 export const REEL_TYPOGRAPHY: Record<
   ReelTypographyId,
-  { label: string; captionFont: string; kickerFont: string }
+  { label: string; captionFont: string; kickerFont: string; theme: ReelThemeId }
 > = {
   syne: {
     label: 'DISPLAY',
     captionFont: "var(--font-syne), 'Arial Black', system-ui, sans-serif",
     kickerFont: "var(--font-dm-mono), 'Courier New', monospace",
+    theme: 'impact',
   },
   brutal: {
     label: 'BRUTAL',
     captionFont: "var(--font-archivo-black), system-ui, sans-serif",
     kickerFont: "var(--font-dm-mono), monospace",
+    theme: 'brutal',
   },
   editorial: {
     label: 'EDITORIAL',
     captionFont: "var(--font-playfair), Georgia, serif",
     kickerFont: "var(--font-dm-sans), system-ui, sans-serif",
+    theme: 'editorial',
   },
   swiss: {
     label: 'SWISS',
     captionFont: "var(--font-space-grotesk), system-ui, sans-serif",
     kickerFont: "var(--font-space-grotesk), system-ui, sans-serif",
+    theme: 'swiss',
   },
   mono: {
     label: 'MONO',
     captionFont: "var(--font-dm-mono), monospace",
     kickerFont: "var(--font-dm-mono), monospace",
+    theme: 'terminal',
   },
   fraunces: {
     label: 'MANIFESTO',
     captionFont: "var(--font-fraunces), Georgia, serif",
     kickerFont: "var(--font-dm-sans), system-ui, sans-serif",
+    theme: 'manifesto',
   },
 };
 

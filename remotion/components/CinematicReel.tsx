@@ -22,6 +22,7 @@ import { wipe } from "@remotion/transitions/wipe";
 import { flip } from "@remotion/transitions/flip";
 import { clockWipe } from "@remotion/transitions/clock-wipe";
 import { iris } from "@remotion/transitions/iris";
+import type { ReelThemeId } from "../../lib/reel-typography";
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 // This is the JSON schema Gemma produces. Keep it intentionally small:
@@ -58,6 +59,8 @@ export interface ReelScene {
 }
 
 export type ReelDecorStyle = "none" | "minimal" | "film";
+export type ReelMotionFeel = "smooth" | "snappy" | "bouncy" | "dramatic" | "dreamy";
+export type ReelTransitionEnergy = "calm" | "medium" | "high";
 
 /**
  * Visual grade presets — CSS filter chains translated from video-use grade.py.
@@ -106,6 +109,12 @@ export interface CinematicReelProps {
   sceneTTSPaths?: string[];
   /** Visual color grade applied to every image. Default "neutral_punch". */
   gradePreset?: GradePreset;
+  /** Layout system attached to the selected typography family. */
+  theme?: ReelThemeId;
+  /** Motion grammar for reveals and Ken Burns pacing. */
+  motionFeel?: ReelMotionFeel;
+  /** Transition family intensity. */
+  transitionEnergy?: ReelTransitionEnergy;
 }
 
 // ─── Duration math (exported for calculateMetadata) ──────────────────────────
@@ -418,6 +427,179 @@ const useSpringAnim = (
   });
 };
 
+function motionWordProfile(motionFeel: ReelMotionFeel) {
+  switch (motionFeel) {
+    case "smooth":
+      return { start: 8, stagger: 8, travel: 30, flash: 0.22 };
+    case "bouncy":
+      return { start: 4, stagger: 5, travel: 62, flash: 0.52 };
+    case "dramatic":
+      return { start: 10, stagger: 10, travel: 82, flash: 0.18 };
+    case "dreamy":
+      return { start: 12, stagger: 9, travel: 22, flash: 0.12 };
+    case "snappy":
+    default:
+      return { start: 6, stagger: 6, travel: 48, flash: 0.34 };
+  }
+}
+
+function transitionTimingConfig(
+  motionFeel: ReelMotionFeel,
+  transitionEnergy: ReelTransitionEnergy
+) {
+  const byEnergy = {
+    calm: { damping: 240, stiffness: 150 },
+    medium: { damping: 185, stiffness: 200 },
+    high: { damping: 130, stiffness: 260 },
+  }[transitionEnergy];
+
+  const byMotion = {
+    smooth: { damping: 30, stiffness: -12 },
+    snappy: { damping: -10, stiffness: 12 },
+    bouncy: { damping: -40, stiffness: 26 },
+    dramatic: { damping: 24, stiffness: -18 },
+    dreamy: { damping: 42, stiffness: -26 },
+  }[motionFeel];
+
+  return {
+    damping: Math.max(90, byEnergy.damping + byMotion.damping),
+    stiffness: Math.max(110, byEnergy.stiffness + byMotion.stiffness),
+  };
+}
+
+function accentForTheme(accent: string, theme: ReelThemeId): string {
+  if (theme === "editorial") return `${accent}aa`;
+  if (theme === "terminal") return `${accent}dd`;
+  return accent;
+}
+
+function sceneLayout(
+  theme: ReelThemeId,
+  sceneIndex: number,
+  sceneCount: number,
+  width: number,
+  height: number
+) {
+  const isFirst = sceneIndex === 0;
+  const isLast = sceneIndex === sceneCount - 1;
+  const base = {
+    captionBottom: Math.round(height * 0.16),
+    kickerBottom: Math.round(height * 0.07),
+    barBottom: Math.round(height * 0.28),
+    maxCaptionWidth: Math.round(width * 0.88),
+    wordGap: Math.round(height * 0.008),
+    justify: "center" as const,
+    alignItems: "center" as const,
+    textAlign: "center" as const,
+    left: 0,
+    right: 0,
+    paddingX: Math.round(width * 0.06),
+    stroke: "0.5px rgba(255,255,255,0.85)",
+    uppercase: true,
+    kickerWrap: true,
+    barMode: "horizontal" as const,
+    barLeft: "8%",
+    barWidthPct: 84,
+    vignetteOpacity: 0.7,
+    bottomGradient:
+      "linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.6) 22%, rgba(0,0,0,0.15) 42%, transparent 58%)",
+  };
+
+  switch (theme) {
+    case "editorial":
+      return {
+        ...base,
+        justify: isFirst ? ("flex-end" as const) : ("flex-start" as const),
+        alignItems: "flex-start" as const,
+        textAlign: "left" as const,
+        left: Math.round(width * 0.08),
+        right: Math.round(width * 0.22),
+        paddingX: 0,
+        captionBottom: isFirst ? Math.round(height * 0.14) : Math.round(height * 0.2),
+        kickerBottom: Math.round(height * 0.09),
+        maxCaptionWidth: Math.round(width * 0.68),
+        stroke: "0px transparent",
+        uppercase: false,
+        barMode: "vertical" as const,
+        barLeft: `${Math.round(width * 0.08)}px`,
+        barWidthPct: 0,
+        bottomGradient:
+          "linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.42) 26%, transparent 62%)",
+      };
+    case "brutal":
+      return {
+        ...base,
+        justify: "flex-end" as const,
+        alignItems: "flex-start" as const,
+        textAlign: "left" as const,
+        left: Math.round(width * 0.07),
+        right: Math.round(width * 0.12),
+        maxCaptionWidth: Math.round(width * 0.8),
+        wordGap: Math.round(height * 0.004),
+        stroke: "0px transparent",
+        bottomGradient:
+          "linear-gradient(to top, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.72) 30%, rgba(0,0,0,0.18) 52%, transparent 68%)",
+      };
+    case "swiss":
+      return {
+        ...base,
+        justify: "flex-start" as const,
+        alignItems: "flex-start" as const,
+        textAlign: "left" as const,
+        left: Math.round(width * 0.08),
+        right: Math.round(width * 0.2),
+        captionBottom: Math.round(height * 0.46),
+        kickerBottom: Math.round(height * 0.16),
+        barBottom: Math.round(height * 0.61),
+        maxCaptionWidth: Math.round(width * 0.64),
+        stroke: "0px transparent",
+        barMode: "horizontal" as const,
+        barLeft: "8%",
+        barWidthPct: 54,
+        bottomGradient:
+          "linear-gradient(to top, rgba(0,0,0,0.74) 0%, rgba(0,0,0,0.24) 18%, transparent 40%)",
+      };
+    case "terminal":
+      return {
+        ...base,
+        justify: "center" as const,
+        alignItems: "flex-start" as const,
+        textAlign: "left" as const,
+        left: Math.round(width * 0.08),
+        right: Math.round(width * 0.08),
+        captionBottom: Math.round(height * 0.26),
+        kickerBottom: Math.round(height * 0.12),
+        maxCaptionWidth: Math.round(width * 0.84),
+        stroke: "0px transparent",
+        uppercase: false,
+        barMode: "horizontal" as const,
+        barLeft: "8%",
+        barWidthPct: 72,
+        bottomGradient:
+          "linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.58) 28%, rgba(0,0,0,0.16) 50%, transparent 66%)",
+      };
+    case "manifesto":
+      return {
+        ...base,
+        justify: isLast ? ("center" as const) : ("flex-end" as const),
+        alignItems: isLast ? ("center" as const) : ("flex-start" as const),
+        textAlign: isLast ? ("center" as const) : ("left" as const),
+        left: isLast ? 0 : Math.round(width * 0.07),
+        right: isLast ? 0 : Math.round(width * 0.18),
+        captionBottom: isLast ? Math.round(height * 0.28) : Math.round(height * 0.12),
+        kickerBottom: Math.round(height * 0.08),
+        maxCaptionWidth: isLast ? Math.round(width * 0.78) : Math.round(width * 0.72),
+        stroke: "0px transparent",
+        uppercase: false,
+        bottomGradient:
+          "linear-gradient(to top, rgba(0,0,0,0.96) 0%, rgba(0,0,0,0.52) 24%, transparent 60%)",
+      };
+    case "impact":
+    default:
+      return base;
+  }
+}
+
 const SceneFrame: React.FC<{
   scene: ResolvedScene;
   sceneLen: number;
@@ -425,6 +607,10 @@ const SceneFrame: React.FC<{
   kickerFontFamily: string;
   decorStyle: ReelDecorStyle;
   gradeFilter?: string;
+  theme: ReelThemeId;
+  motionFeel: ReelMotionFeel;
+  sceneIndex: number;
+  sceneCount: number;
 }> = ({
   scene,
   sceneLen,
@@ -432,6 +618,10 @@ const SceneFrame: React.FC<{
   kickerFontFamily,
   decorStyle,
   gradeFilter = "",
+  theme,
+  motionFeel,
+  sceneIndex,
+  sceneCount,
 }) => {
   const frame = useCurrentFrame();
 
@@ -445,6 +635,9 @@ const SceneFrame: React.FC<{
   const ty = scene.burnFrom[2] + (scene.burnTo[2] - scene.burnFrom[2]) * t;
 
   const { width, height } = useVideoConfig();
+  const layout = sceneLayout(theme, sceneIndex, sceneCount, width, height);
+  const motion = motionWordProfile(motionFeel);
+  const sceneAccent = accentForTheme(scene.accent, theme);
 
   const rawWords = scene.caption.split(/\s+/).filter(Boolean);
   const words = rawWords.length ? rawWords : [scene.caption];
@@ -453,12 +646,6 @@ const SceneFrame: React.FC<{
 
   // All sizes + positions scale with height so they work across 9:16, 1:1, 4:5, 16:9.
   const fontSize = fitCaptionFontSize(words, width, height);
-  const captionBottom = Math.round(height * 0.16);  // 307px @ 1920, 173px @ 1080
-  const kickerBottom = Math.round(height * 0.07);   // 134px @ 1920, 76px @ 1080
-  const barBottom = Math.round(height * 0.28);      // 538px @ 1920, 302px @ 1080
-  const wordGap = Math.round(height * 0.008);       // 15px @ 1920, 9px @ 1080
-  const maxCaptionWidth = Math.round(width * 0.88); // never overflow the frame
-
   const letterSpacingMax = Math.min(10, Math.max(4, Math.round(fontSize * 0.14)));
   const letterSpacing = interpolate(frame, [0, sceneLen], [4, letterSpacingMax], {
     extrapolateLeft: "clamp",
@@ -520,61 +707,81 @@ const SceneFrame: React.FC<{
           background:
             "radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.7) 100%)",
           pointerEvents: "none",
+          opacity: layout.vignetteOpacity,
         }}
       />
 
       {/* Bottom gradient — taller scrim so text always sits in dark zone */}
       <AbsoluteFill
         style={{
-          background:
-            "linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.6) 22%, rgba(0,0,0,0.15) 42%, transparent 58%)",
+          background: layout.bottomGradient,
         }}
       />
 
       {/* Accent bar */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: barBottom,
-          left: "8%",
-          width: `${barWidth * 84}%`,
-          height: 2,
-          background: scene.accent,
-          boxShadow: `0 0 14px ${scene.accent}`,
-          borderRadius: 2,
-        }}
-      />
+      {layout.barMode === "vertical" ? (
+        <div
+          style={{
+            position: "absolute",
+            top: "11%",
+            bottom: "11%",
+            left: layout.barLeft,
+            width: 3,
+            background: `linear-gradient(to bottom, transparent 0%, ${sceneAccent} 18%, ${sceneAccent} 82%, transparent 100%)`,
+            boxShadow: `0 0 18px ${sceneAccent}`,
+            borderRadius: 999,
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            position: "absolute",
+            bottom: layout.barBottom,
+            left: layout.barLeft,
+            width: `${barWidth * layout.barWidthPct}%`,
+            height: 2,
+            background: sceneAccent,
+            boxShadow: `0 0 14px ${sceneAccent}`,
+            borderRadius: 2,
+          }}
+        />
+      )}
 
       {/* Caption — word-by-word spring reveal, bottom-anchored */}
       <div
         style={{
           position: "absolute",
-          bottom: captionBottom,
-          left: 0,
-          right: 0,
+          bottom: layout.captionBottom,
+          left: layout.left,
+          right: layout.right,
           display: "flex",
           flexWrap: "wrap",
-          justifyContent: "center",
-          alignItems: "flex-end",
-          gap: wordGap,
-          padding: `0 ${Math.round(width * 0.06)}px`,
-          maxWidth: maxCaptionWidth,
-          width: "100%",
-          margin: "0 auto",
+          justifyContent: layout.justify,
+          alignItems: layout.alignItems,
+          gap: layout.wordGap,
+          padding: `0 ${layout.paddingX}px`,
+          maxWidth: layout.maxCaptionWidth,
+          width: layout.left === 0 && layout.right === 0 ? "100%" : undefined,
+          margin: layout.left === 0 && layout.right === 0 ? "0 auto" : undefined,
           boxSizing: "border-box",
           overflow: "hidden",
         }}
       >
         {words.map((word, i) => {
-          const wordStart = 6 + i * 6;
+          const wordStart = motion.start + i * motion.stagger;
           const wordY = interpolate(
             frame,
             [wordStart, wordStart + 18],
-            [50, 0],
+            [motion.travel, 0],
             {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",
-              easing: Easing.out(Easing.cubic),
+              easing:
+                motionFeel === "dramatic"
+                  ? Easing.out(Easing.exp)
+                  : motionFeel === "dreamy"
+                    ? Easing.inOut(Easing.sin)
+                    : Easing.out(Easing.cubic),
             }
           );
           const wordOp = interpolate(
@@ -595,15 +802,18 @@ const SceneFrame: React.FC<{
                 fontWeight: 900,
                 color: "#fff",
                 letterSpacing,
-                textTransform: "uppercase",
+                textTransform: layout.uppercase ? "uppercase" : "none",
                 fontFamily: captionFontFamily,
                 lineHeight: 1.05,
                 maxWidth: "100%",
                 wordBreak: "break-word",
-                textShadow: `0 4px 20px rgba(0,0,0,0.9), 0 0 2px ${scene.accent}`,
+                textShadow:
+                  theme === "terminal"
+                    ? `0 0 14px ${sceneAccent}, 0 0 2px rgba(255,255,255,0.6)`
+                    : `0 4px 20px rgba(0,0,0,0.9), 0 0 2px ${sceneAccent}`,
                 transform: `translateY(${wordY}px)`,
                 opacity: wordOp,
-                WebkitTextStroke: "0.5px rgba(255,255,255,0.85)",
+                WebkitTextStroke: layout.stroke,
               }}
             >
               {word}
@@ -617,15 +827,15 @@ const SceneFrame: React.FC<{
         <div
           style={{
             position: "absolute",
-            bottom: kickerBottom,
-            left: 0,
-            right: 0,
-            textAlign: "center",
+            bottom: layout.kickerBottom,
+            left: layout.left,
+            right: layout.right,
+            textAlign: layout.textAlign,
             transform: `translateY(${kickerSlide}px)`,
             opacity: kickerOpacity,
-            padding: `0 ${Math.round(width * 0.08)}px`,
-            maxWidth: Math.round(width * 0.92),
-            margin: "0 auto",
+            padding: `0 ${Math.round(width * 0.02)}px`,
+            maxWidth: layout.maxCaptionWidth,
+            margin: layout.left === 0 && layout.right === 0 ? "0 auto" : undefined,
             boxSizing: "border-box",
           }}
         >
@@ -633,8 +843,8 @@ const SceneFrame: React.FC<{
             style={{
               fontSize: Math.round(height * 0.018),
               fontWeight: 600,
-              color: scene.accent,
-              letterSpacing: 4,
+              color: sceneAccent,
+              letterSpacing: theme === "editorial" ? 2 : 4,
               textTransform: "uppercase",
               fontFamily: kickerFontFamily,
               textShadow: "0 2px 8px rgba(0,0,0,0.9)",
@@ -644,7 +854,7 @@ const SceneFrame: React.FC<{
               lineHeight: 1.35,
             }}
           >
-            ◆ {scene.kicker} ◆
+            {theme === "editorial" ? scene.kicker : `◆ ${scene.kicker} ◆`}
           </span>
         </div>
       ) : null}
@@ -661,7 +871,7 @@ const SceneFrame: React.FC<{
       <AbsoluteFill
         style={{
           backgroundColor: "#fff",
-          opacity: interpolate(frame, [0, 2, 4], [0, 0.65, 0], {
+          opacity: interpolate(frame, [0, 2, 4], [0, motion.flash, 0], {
             extrapolateLeft: "clamp",
             extrapolateRight: "clamp",
           }),
@@ -855,6 +1065,9 @@ export const CinematicReel: React.FC<CinematicReelProps> = ({
   transitionLengthInFrames = 18,
   sceneTTSPaths,
   gradePreset = "neutral_punch",
+  theme = "impact",
+  motionFeel = "snappy",
+  transitionEnergy = "medium",
 }) => {
   const gradeFilter = GRADE_FILTERS[gradePreset] ?? "";
   // All hooks must be called unconditionally before any early return.
@@ -897,7 +1110,7 @@ export const CinematicReel: React.FC<CinematicReelProps> = ({
             // springTiming with high damping (critically damped, no bounce) replaces
             // linearTiming for all transition types — organic settle vs mechanical slide.
             const timing = springTiming({
-              config: { damping: 200 },
+              config: transitionTimingConfig(motionFeel, transitionEnergy),
               durationInFrames: transLen,
             });
             entries.push(
@@ -921,6 +1134,10 @@ export const CinematicReel: React.FC<CinematicReelProps> = ({
                 kickerFontFamily={kickerFontFamily}
                 decorStyle={decorStyle}
                 gradeFilter={gradeFilter}
+                theme={theme}
+                motionFeel={motionFeel}
+                sceneIndex={i}
+                sceneCount={resolved.length}
               />
               {sceneTTSPaths?.[i] ? (
                 <Audio

@@ -17,6 +17,7 @@ import {
   type HyperframesCreativeProfile,
   type HyperframesMotionFeel,
 } from "@/lib/hyperframes-prompt";
+import { findBannedPhrases, isThinText } from "@/lib/copy-guard";
 import { renderHtmlSlidesToPng } from "@/lib/html-slide-render";
 import { computeHtmlSlideVideoDuration } from "@/lib/html-slide-duration";
 import type { ConceptBrief } from "@/lib/concept-brief";
@@ -1563,6 +1564,100 @@ function findHyperframesBannedCopy(html: string): string[] {
   return [...new Set(hits)];
 }
 
+function copyGuardMinWords(captionTone?: HyperframesCaptionTone, hasNarration = false): number {
+  if (hasNarration) return 5;
+  if (captionTone === "hype") return 3;
+  if (captionTone === "social") return 4;
+  return 5;
+}
+
+function findBaselineCopyGuardIssues(
+  text: string,
+  opts: {
+    label: string;
+    captionTone?: HyperframesCaptionTone;
+    hasNarration?: boolean;
+  }
+): string[] {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) return [`${opts.label}: empty copy`];
+
+  const issues: string[] = [];
+  const banned = findBannedPhrases(normalized);
+  if (banned.length > 0) {
+    issues.push(`${opts.label}: banned phrases (${banned.join(", ")})`);
+  }
+  if (isThinText(normalized, copyGuardMinWords(opts.captionTone, opts.hasNarration === true))) {
+    issues.push(`${opts.label}: thin copy`);
+  }
+  return issues;
+}
+
+function findReelSceneCopyGuardIssues(
+  scene: { caption: string; kicker?: string; narration?: string },
+  index: number,
+  captionTone?: HyperframesCaptionTone
+): string[] {
+  const blob = [scene.caption, scene.kicker, scene.narration].filter(Boolean).join(" ");
+  return findBaselineCopyGuardIssues(blob, {
+    label: `Scene ${index + 1}`,
+    captionTone,
+    hasNarration: Boolean(scene.narration?.trim()),
+  });
+}
+
+function findHtmlSlideCopyGuardIssues(
+  slides: string[],
+  captionTone?: HyperframesCaptionTone
+): string[] {
+  return slides.flatMap((html, i) =>
+    findBaselineCopyGuardIssues(htmlSlideVisibleText(html), {
+      label: `Slide ${i + 1}`,
+      captionTone,
+    })
+  );
+}
+
+async function repairHtmlSlidesCopyGuard(
+  rawDeck: string,
+  userBrief: string,
+  canvasW: number,
+  canvasH: number,
+  captionTone?: HyperframesCaptionTone
+): Promise<string | null> {
+  const prompt = `${HTML_SLIDES_CREATIVE_DIRECTIVES}
+
+You fix HTML slide decks when the visible copy is thin or uses banned AI/marketing filler.
+
+Rewrite ONLY visible copy (headlines, kickers, short labels, supporting lines). Keep every \`<img src="…">\` exactly the same, same ${canvasW}×${canvasH} wrapper, inline styles, and animation structure. Close all tags.
+
+Problems to fix:
+- Remove banned phrases: in today's fast-paced world, revolutionary, game-changing, unlock, elevate, here's the thing, let's dive in, buckle up, the future of, curated
+- Replace thin copy with concrete, scene-specific language that sounds finished on screen
+- Keep tone aligned to ${captionTone ?? "social"}
+
+Return the FULL deck with ---SLIDE--- separators only. No markdown fences.
+
+USER BRIEF:
+${userBrief.slice(0, 800)}
+
+INPUT:
+${rawDeck.slice(0, 95_000)}`;
+
+  try {
+    const raw = await callOllamaChat([{ role: "user", content: prompt }], true);
+    const cleaned = raw
+      .replace(/<think>[\s\S]*?<\/think>/g, "")
+      .replace(/```(?:html)?\s*/gi, "")
+      .replace(/```\s*$/g, "")
+      .trim();
+    if (cleaned.includes("---SLIDE---") && cleaned.includes("<")) return cleaned;
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
 async function repairHtmlSlidesTechBro(
   rawDeck: string,
   userBrief: string,
@@ -1646,6 +1741,50 @@ ${badJson.slice(0, 14_000)}`;
   return null;
 }
 
+async function repairReelJsonForCopyGuard(
+  badJson: string,
+  userBrief: string,
+  captionTone: HyperframesCaptionTone,
+  lockedSrcOrder?: string[]
+): Promise<string | null> {
+  const orderBlock =
+    lockedSrcOrder && lockedSrcOrder.length > 0
+      ? `
+LOCKED PHOTO ORDER — ${lockedSrcOrder.length} scenes only:
+${lockedSrcOrder.map((s, i) => `  Scene ${i + 1}: "src" MUST be exactly "${s}"`).join("\n")}
+Delete extra scenes or duplicate uses of the same photo.`
+      : "";
+
+  const prompt = `${GEMMA_JSON_CREATIVE_DIRECTIVES}
+
+You are fixing a reel JSON scene plan. The draft has baseline copy-quality issues.
+
+Rewrite caption, kicker, and narration so each scene feels concrete, specific, and social-native.
+
+STRICT:
+- Output ONE valid JSON object only. No markdown fences.
+- Keep "title" / "brandName" unless clearly broken.
+${orderBlock || "- Keep src values valid and scene count stable."}
+- Remove banned phrases: in today's fast-paced world, revolutionary, game-changing, unlock, elevate, here's the thing, let's dive in, buckle up, the future of, curated
+- Avoid thin copy. Each scene needs enough substance to work on screen and in TTS.
+- Tone: ${captionTone}
+
+User brief: ${userBrief.slice(0, 600)}
+
+INPUT JSON:
+${badJson.slice(0, 14_000)}`;
+  try {
+    const raw = await callOllamaChat([{ role: "user", content: prompt }], true);
+    const p = safeJson(raw);
+    if (p && typeof p === "object" && Array.isArray((p as Record<string, unknown>).scenes)) {
+      return JSON.stringify(p);
+    }
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
 function validateReelSpec(
   raw: unknown,
   validPaths: Set<string>,
@@ -1653,6 +1792,7 @@ function validateReelSpec(
   maxSceneCount = 16,
   opts?: {
     roastCopyCheck?: boolean;
+    copyGuardTone?: HyperframesCaptionTone;
     /** When set: scenes.length must match, scene i src must equal paths[i], no duplicate src */
     enforceImageOrder?: string[];
   }
@@ -1739,6 +1879,15 @@ function validateReelSpec(
           ok: false,
           error: `Scene ${i + 1} sounds like startup/motivation jargon (${bad.slice(0, 4).join(", ")}) — rewrite as a visual roast.`,
         };
+      }
+    }
+  }
+
+  if (opts?.copyGuardTone) {
+    for (let i = 0; i < cleaned.length; i++) {
+      const issues = findReelSceneCopyGuardIssues(cleaned[i], i, opts.copyGuardTone);
+      if (issues.length > 0) {
+        return { ok: false, error: issues[0] };
       }
     }
   }
@@ -2090,13 +2239,6 @@ async function generateSceneTTS(
   const publicDir = projectPath("public", "tts");
   fs.mkdirSync(publicDir, { recursive: true });
 
-  const direction = buildVoiceDirection({
-    captionTone: (captionTone ?? "social") as CaptionTone,
-    motionFeel: (motionFeel ?? "smooth") as MotionFeel,
-    contentSeed: componentName,
-    roastDelivery: roastDelivery === true,
-  });
-
   const paths: string[] = [];
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i];
@@ -2109,6 +2251,13 @@ async function generateSceneTTS(
       totalScenes: scenes.length,
     });
     if (!text) { paths.push(""); continue; }
+
+    const direction = buildVoiceDirection({
+      captionTone: (captionTone ?? "social") as CaptionTone,
+      motionFeel: (motionFeel ?? "smooth") as MotionFeel,
+      contentSeed: `${componentName}:${i}:${text}`,
+      roastDelivery: roastDelivery === true,
+    });
 
     const filename = `${componentName}-scene-${i}.wav`;
     const outputPath = path.join(publicDir, filename);
@@ -2372,6 +2521,22 @@ export async function POST(req: NextRequest) {
             }
           }
         }
+        let baselineCopyIssues = findHtmlSlideCopyGuardIssues(slides, creative.captionTone);
+        if (baselineCopyIssues.length > 0) {
+          send({
+            type: "status",
+            text: `Copy repair · fixing ${baselineCopyIssues.length} baseline copy issue(s) before render…`,
+          });
+          const fixed = await repairHtmlSlidesCopyGuard(response, userMessage, w, h, creative.captionTone);
+          if (fixed) {
+            const repairedSlides = parseHtmlSlidesFromGemma(fixed);
+            if (repairedSlides.length > 0) {
+              response = fixed;
+              slides = repairedSlides;
+              baselineCopyIssues = findHtmlSlideCopyGuardIssues(slides, creative.captionTone);
+            }
+          }
+        }
         const stillBanned = slides.flatMap((html, i) =>
           findHyperframesBannedCopy(html).map((label) => `slide ${i + 1}: ${label}`)
         );
@@ -2379,6 +2544,13 @@ export async function POST(req: NextRequest) {
           send({
             type: "error",
             content: `Slides contain banned tech / fake-HUD copy: ${stillBanned.slice(0, 14).join("; ")}. Try a shorter deck or regenerate.`,
+          });
+          return;
+        }
+        if (baselineCopyIssues.length > 0) {
+          send({
+            type: "error",
+            content: `Slides failed baseline copy guard: ${baselineCopyIssues.slice(0, 14).join("; ")}. Try regenerating with a more specific brief.`,
           });
           return;
         }
@@ -2602,28 +2774,36 @@ export async function POST(req: NextRequest) {
 
         let validation = validateReelSpec(parsed, validPaths, copyLimits, effectiveMaxScenes, {
           roastCopyCheck: roastLikeCopy,
+          copyGuardTone: creative.captionTone,
           enforceImageOrder: imageOrder,
         });
 
         const repairableReel =
-          roastLikeCopy &&
           !validation.ok &&
-          /jargon|startup|duplicate|exactly|must use|only once|more\s+than|scenes has|required|not one of/i.test(
+          /jargon|startup|duplicate|exactly|must use|only once|more\s+than|scenes has|required|not one of|banned phrases|thin copy/i.test(
             validation.error
           );
 
         if (repairableReel) {
-          send({ type: "status", text: "Repair pass · fixing scene order and/or roast copy…" });
-          const repaired = await repairReelJsonForRoast(
-            JSON.stringify(parsed),
-            userMessage,
-            imageOrder
-          );
+          send({ type: "status", text: "Repair pass · fixing scene copy/order before TTS/render…" });
+          const repaired = roastLikeCopy
+            ? await repairReelJsonForRoast(
+                JSON.stringify(parsed),
+                userMessage,
+                imageOrder
+              )
+            : await repairReelJsonForCopyGuard(
+                JSON.stringify(parsed),
+                userMessage,
+                creative.captionTone,
+                imageOrder
+              );
           if (repaired) {
             try {
               parsed = JSON.parse(repaired);
               validation = validateReelSpec(parsed, validPaths, copyLimits, effectiveMaxScenes, {
                 roastCopyCheck: roastLikeCopy,
+                copyGuardTone: creative.captionTone,
                 enforceImageOrder: imageOrder,
               });
             } catch {
