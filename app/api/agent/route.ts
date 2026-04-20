@@ -2287,11 +2287,51 @@ function looksLikeReactCode(s: string): boolean {
 
 function autofixCode(code: string): string {
   let out = code;
+
+  // 1. rem → px number  (e.g. fontSize: '1.5rem' → fontSize: 24)
   out = out.replace(
     /fontSize:\s*['"](\d+(?:\.\d+)?)rem['"]/g,
     (_m, n) => `fontSize: ${Math.round(parseFloat(n) * 16)}`
   );
+
+  // 2. <Sequence duration={…} → durationInFrames
   out = out.replace(/(<Sequence\b[^>]*?)\bduration=\{/g, "$1durationInFrames={");
+
+  // 3. fontWeight: 'bold' / 'normal' → numeric
+  out = out.replace(/fontWeight:\s*['"]bold['"]/g, "fontWeight: 700");
+  out = out.replace(/fontWeight:\s*['"]normal['"]/g, "fontWeight: 400");
+  out = out.replace(/fontWeight:\s*['"]semibold['"]/g, "fontWeight: 600");
+  out = out.replace(/fontWeight:\s*['"]medium['"]/g, "fontWeight: 500");
+  out = out.replace(/fontWeight:\s*['"]light['"]/g, "fontWeight: 300");
+
+  // 4. Single-value px strings for spacing/sizing props → numbers
+  //    e.g. paddingTop: '16px' → paddingTop: 16
+  out = out.replace(
+    /\b(padding(?:Top|Bottom|Left|Right)?|margin(?:Top|Bottom|Left|Right)?|top|bottom|left|right|width|height|gap|rowGap|columnGap|borderRadius|borderWidth|borderTopLeftRadius|borderTopRightRadius|borderBottomLeftRadius|borderBottomRightRadius):\s*['"](\d+(?:\.\d+)?)px['"]/g,
+    (_m, prop, n) => `${prop}: ${parseFloat(n)}`
+  );
+
+  // 5. CSS transition strings in style objects — no-ops in Remotion, cause confusion
+  //    e.g. transition: 'all 0.3s ease' → remove
+  out = out.replace(/\btransition:\s*['"][^'"]*['"]\s*,?\s*/g, "");
+
+  // 6. Remove framer-motion import lines
+  out = out.replace(/^import\s+\{[^}]*\}\s+from\s+['"]framer-motion['"];\s*\n?/gm, "");
+  out = out.replace(/^import\s+\*\s+as\s+\w+\s+from\s+['"]framer-motion['"];\s*\n?/gm, "");
+  out = out.replace(/^import\s+motion\s+from\s+['"]framer-motion['"];\s*\n?/gm, "");
+
+  // 7. motion.div → div, motion.span → span, etc. (crude but avoids compile crash)
+  //    Framer-motion props that remain will be stripped below.
+  out = out.replace(/<motion\.([a-zA-Z]+)\b/g, "<$1");
+  out = out.replace(/<\/motion\.([a-zA-Z]+)>/g, "</$1>");
+  // Strip motion-specific JSX props: animate={…} initial={…} etc.
+  out = out.replace(/\s+(?:animate|initial|exit|whileHover|whileTap|whileFocus|variants|layout|layoutId)\s*=\s*\{[^}]*\}/g, "");
+
+  // 8. Ensure React is imported when React.FC is referenced
+  if (/React\.FC|React\.ReactNode/.test(out) && !/import\s+React\b/.test(out)) {
+    out = `import React from "react";\n${out}`;
+  }
+
   return out;
 }
 
@@ -2326,6 +2366,52 @@ function normalizeExportName(code: string, expectedName: string): string {
   }
 
   return out;
+}
+
+// ── Freeform: repair a broken composition by feeding the TS error back to Gemma ─
+
+async function repairFreeformCode(
+  code: string,
+  error: string,
+  expectedName: string,
+  timeoutMs = 50_000,
+): Promise<string | null> {
+  // Truncate code defensively so the repair prompt fits in context.
+  const codeSnippet = code.length > 5000 ? code.slice(0, 5000) + "\n// … (truncated for repair)" : code;
+
+  const prompt = `You are repairing a Remotion TSX composition that has TypeScript errors.
+
+ERRORS TO FIX:
+${error}
+
+CURRENT CODE:
+\`\`\`tsx
+${codeSnippet}
+\`\`\`
+
+RULES — fix only the listed errors, keep all visual logic intact:
+- Named export: export const ${expectedName}: React.FC = () => { ... }
+- Hooks (useCurrentFrame, useVideoConfig) only inside the component function
+- No framer-motion — use spring/interpolate from "remotion"
+- No rem units in style objects — use pixel numbers
+- All style object values must be valid React.CSSProperties (strings or numbers)
+- Import React from "react" if React.FC is referenced
+
+Output the COMPLETE corrected file in a single \`\`\`tsx block. No explanations.`;
+
+  try {
+    const response = await streamOllama(prompt, () => { /* repair runs silently */ }, {
+      temperature: 0.05,
+      num_predict: Math.min(Math.ceil(code.length / 3), 3200),
+      timeoutMs,
+    });
+    const raw = extractCode(response);
+    if (!raw) return null;
+    const fixed = autofixCode(raw);
+    return normalizeExportName(fixed, expectedName);
+  } catch {
+    return null;
+  }
 }
 
 // ── Shared: register new composition in Root.tsx ─────────────────────────────
@@ -3258,11 +3344,11 @@ export async function POST(req: NextRequest) {
       }
       const code = autofixCode(rawCode);
 
+      // Safety net: autofixCode already handles most of these, but catch anything it missed.
       const bad: { hit: boolean; msg: string }[] = [
         { hit: hasModuleLevelHook(code), msg: "hook at module level" },
-        { hit: /motion\.[a-z]+/.test(code), msg: "framer-motion usage" },
-        { hit: /fontSize:\s*['"]?\d+rem/.test(code), msg: "rem unit in style object (use numbers)" },
-        { hit: /<Sequence[^>]+\bduration\s*=\s*\{/.test(code), msg: "wrong prop: use durationInFrames" },
+        // motion.* — autofixCode strips framer-motion; this catches edge cases (e.g. motion.values)
+        { hit: /\bmotion\.[a-z]+\s*[({<]/.test(code), msg: "framer-motion usage" },
       ];
       const firstBad = bad.find((b) => b.hit);
       if (firstBad) {
@@ -3288,15 +3374,37 @@ export async function POST(req: NextRequest) {
 
       // Validate BEFORE touching Root.tsx — restore backup or delete new file on failure.
       send({ type: "status", text: "Checking for errors…" });
-      const { ok, error } = quickValidate(projectPath(outPath));
+      let { ok, error: validateError } = quickValidate(projectPath(outPath));
+
       if (!ok) {
-        if (backup) {
-          fs.writeFileSync(projectPath(outPath), backup, "utf-8");
-        } else {
-          try { fs.unlinkSync(projectPath(outPath)); } catch { /* already gone */ }
+        // ── Auto-repair pass: feed the TS errors back to Gemma for a targeted fix ──
+        send({ type: "status", text: `Repairing TS errors… (${validateError.slice(0, 80)})` });
+        const repaired = await repairFreeformCode(
+          fs.readFileSync(projectPath(outPath), "utf-8"),
+          validateError,
+          expectedName,
+        );
+
+        if (repaired) {
+          fs.writeFileSync(projectPath(outPath), repaired, "utf-8");
+          const second = quickValidate(projectPath(outPath));
+          ok = second.ok;
+          validateError = second.error;
+          if (ok) {
+            send({ type: "status", text: "Repair successful ✓" });
+          }
         }
-        send({ type: "error", content: `TypeScript error in generated code:\n${error}` });
-        return;
+
+        if (!ok) {
+          // Still broken after repair — revert to backup or remove the file.
+          if (backup) {
+            fs.writeFileSync(projectPath(outPath), backup, "utf-8");
+          } else {
+            try { fs.unlinkSync(projectPath(outPath)); } catch { /* already gone */ }
+          }
+          send({ type: "error", content: `TypeScript error in generated code:\n${validateError}` });
+          return;
+        }
       }
 
       if (!filePath && outPath !== "remotion/Root.tsx") {
@@ -3313,7 +3421,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      send({ type: "validation", success: ok, output: error });
+      send({ type: "validation", success: ok, output: validateError });
       send({ type: "done" });
     } catch (unexpected: unknown) {
       const msg = unexpected instanceof Error ? unexpected.message : String(unexpected);
