@@ -42,22 +42,29 @@ function autoDetectedChromiumExecutables(): string[] {
  */
 async function launchChromiumForCapture(): Promise<Browser> {
   const attempts: LaunchOptions[] = [];
+  const baseArgs = [
+    "--disable-gpu",
+    "--disable-background-networking",
+    "--disable-background-timer-throttling",
+    "--disable-renderer-backgrounding",
+    "--disable-dev-shm-usage",
+  ];
 
   const forced = envChromiumExecutable();
   if (forced) {
-    attempts.push({ headless: true, executablePath: forced });
+    attempts.push({ headless: true, executablePath: forced, args: baseArgs });
   }
 
-  attempts.push({ headless: true });
+  attempts.push({ headless: true, args: baseArgs });
 
   for (const executablePath of autoDetectedChromiumExecutables()) {
-    attempts.push({ headless: true, executablePath });
+    attempts.push({ headless: true, executablePath, args: baseArgs });
   }
 
   attempts.push(
-    { headless: true, channel: "chrome" },
-    { headless: true, channel: "chrome-beta" },
-    { headless: true, channel: "msedge" }
+    { headless: true, channel: "chrome", args: baseArgs },
+    { headless: true, channel: "chrome-beta", args: baseArgs },
+    { headless: true, channel: "msedge", args: baseArgs }
   );
 
   let lastErr: unknown;

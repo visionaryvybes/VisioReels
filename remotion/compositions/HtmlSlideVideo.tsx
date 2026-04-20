@@ -22,6 +22,7 @@ export type HtmlSlideVideoProps = {
   narrationPaths?: string[];
   motionFeel?: "smooth" | "snappy" | "bouncy" | "dramatic" | "dreamy";
   transitionEnergy?: "calm" | "medium" | "high";
+  frameStyle?: "cinematic" | "warm-grain" | "swiss-grid" | "signal" | "gallery" | "glitch";
 };
 
 function resolvePublicPath(src: string): string {
@@ -72,10 +73,19 @@ const cameraVectors = [
 
 const SlideAtmosphere: React.FC<{
   motionFeel: NonNullable<HtmlSlideVideoProps["motionFeel"]>;
-}> = ({ motionFeel }) => {
+  frameStyle: NonNullable<HtmlSlideVideoProps["frameStyle"]>;
+}> = ({ motionFeel, frameStyle }) => {
   const frame = useCurrentFrame();
   const grainOpacity =
-    motionFeel === "dramatic" ? 0.12 : motionFeel === "dreamy" ? 0.06 : motionFeel === "snappy" ? 0.08 : 0.1;
+    frameStyle === "warm-grain"
+      ? 0.16
+      : motionFeel === "dramatic"
+        ? 0.12
+        : motionFeel === "dreamy"
+          ? 0.06
+          : motionFeel === "snappy"
+            ? 0.08
+            : 0.1;
   const pulse = interpolate(frame % 45, [0, 22, 44], [0.12, 0.2, 0.12], {
     extrapolateRight: "clamp",
   });
@@ -85,14 +95,20 @@ const SlideAtmosphere: React.FC<{
       <AbsoluteFill
         style={{
           background:
-            "linear-gradient(180deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.02) 28%, rgba(0,0,0,0.38) 100%)",
+            frameStyle === "swiss-grid"
+              ? "linear-gradient(180deg, rgba(248,246,239,0.06) 0%, rgba(0,0,0,0.04) 35%, rgba(0,0,0,0.34) 100%)"
+              : frameStyle === "glitch"
+                ? "linear-gradient(180deg, rgba(10,18,28,0.28) 0%, rgba(0,0,0,0.04) 28%, rgba(0,0,0,0.46) 100%)"
+                : "linear-gradient(180deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.02) 28%, rgba(0,0,0,0.38) 100%)",
           pointerEvents: "none",
         }}
       />
       <AbsoluteFill
         style={{
           background:
-            motionFeel === "dreamy"
+            frameStyle === "signal"
+              ? "radial-gradient(circle at 18% 16%, rgba(64,222,255,0.18), transparent 28%), radial-gradient(circle at 82% 78%, rgba(167,139,250,0.16), transparent 30%)"
+              : motionFeel === "dreamy"
               ? "radial-gradient(circle at 20% 18%, rgba(255,224,178,0.18), transparent 34%), radial-gradient(circle at 82% 78%, rgba(141,214,255,0.14), transparent 36%)"
               : "radial-gradient(circle at 18% 18%, rgba(255,255,255,0.12), transparent 28%), radial-gradient(circle at 82% 82%, rgba(255,255,255,0.08), transparent 26%)",
           mixBlendMode: "screen",
@@ -103,8 +119,16 @@ const SlideAtmosphere: React.FC<{
       <AbsoluteFill
         style={{
           inset: "3.5%",
-          border: "1px solid rgba(255,255,255,0.12)",
-          boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.04)",
+          border:
+            frameStyle === "gallery"
+              ? "1px solid rgba(255,255,255,0.18)"
+              : frameStyle === "signal"
+                ? "1px solid rgba(76,201,255,0.22)"
+                : "1px solid rgba(255,255,255,0.12)",
+          boxShadow:
+            frameStyle === "signal"
+              ? "inset 0 0 0 1px rgba(167,139,250,0.08), 0 0 28px rgba(76,201,255,0.08)"
+              : "inset 0 0 0 1px rgba(255,255,255,0.04)",
           pointerEvents: "none",
         }}
       />
@@ -119,6 +143,28 @@ const SlideAtmosphere: React.FC<{
           pointerEvents: "none",
         }}
       />
+      {frameStyle === "swiss-grid" ? (
+        <AbsoluteFill
+          style={{
+            opacity: 0.12,
+            backgroundImage:
+              "linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)",
+            backgroundSize: "120px 120px",
+            pointerEvents: "none",
+          }}
+        />
+      ) : null}
+      {frameStyle === "glitch" ? (
+        <AbsoluteFill
+          style={{
+            opacity: 0.22,
+            mixBlendMode: "screen",
+            background:
+              "linear-gradient(180deg, rgba(255,0,85,0.08) 0%, transparent 22%, transparent 74%, rgba(0,255,255,0.08) 100%)",
+            pointerEvents: "none",
+          }}
+        />
+      ) : null}
     </>
   );
 };
@@ -127,7 +173,8 @@ const SlideStill: React.FC<{
   src: string;
   index: number;
   motionFeel: NonNullable<HtmlSlideVideoProps["motionFeel"]>;
-}> = ({ src, index, motionFeel }) => {
+  frameStyle: NonNullable<HtmlSlideVideoProps["frameStyle"]>;
+}> = ({ src, index, motionFeel, frameStyle }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const vector = cameraVectors[index % cameraVectors.length];
@@ -161,7 +208,12 @@ const SlideStill: React.FC<{
             width: "100%",
             height: "100%",
             objectFit: "cover",
-            filter: "blur(42px) brightness(0.62) saturate(1.2)",
+            filter:
+              frameStyle === "warm-grain"
+                ? "blur(42px) brightness(0.66) saturate(0.94) sepia(0.08)"
+                : frameStyle === "glitch"
+                  ? "blur(38px) brightness(0.58) saturate(1.4) hue-rotate(-8deg)"
+                  : "blur(42px) brightness(0.62) saturate(1.2)",
             transform: "scale(1.18)",
           }}
         />
@@ -178,6 +230,14 @@ const SlideStill: React.FC<{
             width: "100%",
             height: "100%",
             objectFit: "cover",
+            filter:
+              frameStyle === "warm-grain"
+                ? "contrast(1.08) saturate(0.9) sepia(0.06)"
+                : frameStyle === "signal"
+                  ? "contrast(1.06) saturate(1.08)"
+                  : frameStyle === "glitch"
+                    ? "contrast(1.12) saturate(1.18)"
+                    : undefined,
           }}
         />
       </AbsoluteFill>
@@ -194,7 +254,17 @@ const SlideStill: React.FC<{
           mixBlendMode: "screen",
         }}
       />
-      <SlideAtmosphere motionFeel={motionFeel} />
+      <SlideAtmosphere motionFeel={motionFeel} frameStyle={frameStyle} />
+      {frameStyle === "gallery" ? (
+        <AbsoluteFill
+          style={{
+            inset: "7%",
+            border: "1px solid rgba(255,255,255,0.08)",
+            boxShadow: "0 24px 80px rgba(0,0,0,0.26)",
+            pointerEvents: "none",
+          }}
+        />
+      ) : null}
     </AbsoluteFill>
   );
 };
@@ -206,6 +276,7 @@ export const HtmlSlideVideo: React.FC<HtmlSlideVideoProps> = ({
   narrationPaths,
   motionFeel = "snappy",
   transitionEnergy = "medium",
+  frameStyle = "cinematic",
 }) => {
   const { width: vw, height: vh } = useVideoConfig();
   const transitions = TRANSITION_FAMILIES[transitionEnergy] ?? TRANSITION_FAMILIES.medium;
@@ -254,7 +325,7 @@ export const HtmlSlideVideo: React.FC<HtmlSlideVideoProps> = ({
                 />
               ) : null}
               <TransitionSeries.Sequence durationInFrames={sceneLengthInFrames}>
-                <SlideStill src={src} index={i} motionFeel={motionFeel} />
+                <SlideStill src={src} index={i} motionFeel={motionFeel} frameStyle={frameStyle} />
                 {narrationPaths?.[i] ? (
                   <Audio
                     src={staticFile(narrationPaths[i]!.replace(/^\.?\//, ""))}

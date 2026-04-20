@@ -10,9 +10,12 @@ export type ReelTypographyId =
   | 'quiet'
   | 'zine'
   | 'luxe'
-  | 'signal';
+  | 'signal'
+  | 'magazine'
+  | 'glitch'
+  | 'neo';
 
-export type ReelDecorId = 'none' | 'minimal' | 'film';
+export type ReelDecorId = 'none' | 'minimal' | 'film' | 'chrome';
 export type ReelThemeId =
   | 'impact'
   | 'brutal'
@@ -21,7 +24,10 @@ export type ReelThemeId =
   | 'terminal'
   | 'manifesto'
   | 'luxe'
-  | 'signal';
+  | 'signal'
+  | 'magazine'
+  | 'glitch'
+  | 'neo';
 
 export const REEL_TYPOGRAPHY: Record<
   ReelTypographyId,
@@ -87,22 +93,41 @@ export const REEL_TYPOGRAPHY: Record<
     kickerFont: "var(--font-dm-mono), 'Courier New', monospace",
     theme: 'signal',
   },
+  magazine: {
+    label: 'MAGAZINE',
+    captionFont: "var(--font-playfair), Georgia, serif",
+    kickerFont: "var(--font-dm-sans), system-ui, sans-serif",
+    theme: 'magazine',
+  },
+  glitch: {
+    label: 'GLITCH',
+    captionFont: "var(--font-syne), 'Arial Black', system-ui, sans-serif",
+    kickerFont: "var(--font-dm-mono), monospace",
+    theme: 'glitch',
+  },
+  neo: {
+    label: 'NEO',
+    captionFont: "var(--font-space-grotesk), system-ui, sans-serif",
+    kickerFont: "var(--font-dm-mono), monospace",
+    theme: 'neo',
+  },
 };
 
 export const REEL_DECOR_LABELS: Record<ReelDecorId, string> = {
   none: 'Clean',
   minimal: 'Corners + icons',
   film: 'Film frame',
+  chrome: 'Tech frame',
 };
 
 export function parseReelTypographyId(v: unknown): ReelTypographyId {
-  if (v === 'syne' || v === 'brutal' || v === 'editorial' || v === 'swiss' || v === 'mono' || v === 'fraunces' || v === 'quiet' || v === 'zine' || v === 'luxe' || v === 'signal') {
+  if (v === 'syne' || v === 'brutal' || v === 'editorial' || v === 'swiss' || v === 'mono' || v === 'fraunces' || v === 'quiet' || v === 'zine' || v === 'luxe' || v === 'signal' || v === 'magazine' || v === 'glitch' || v === 'neo') {
     return v;
   }
   return 'syne';
 }
 
 export function parseReelDecorId(v: unknown): ReelDecorId {
-  if (v === 'none' || v === 'minimal' || v === 'film') return v;
+  if (v === 'none' || v === 'minimal' || v === 'film' || v === 'chrome') return v;
   return 'minimal';
 }

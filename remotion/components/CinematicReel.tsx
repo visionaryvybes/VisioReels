@@ -39,7 +39,9 @@ export type TransitionKind =
   | "wipe-right"
   | "wipe-bottom"
   | "clock-wipe"
-  | "iris";
+  | "iris"
+  | "flash-cut"
+  | "chromatic-split";
 
 export interface ReelScene {
   /**
@@ -60,7 +62,7 @@ export interface ReelScene {
   textPlacement?: "bottom-left" | "bottom-center" | "top-left" | "top-center" | "left-panel" | "right-panel" | "center";
 }
 
-export type ReelDecorStyle = "none" | "minimal" | "film";
+export type ReelDecorStyle = "none" | "minimal" | "film" | "chrome";
 export type ReelMotionFeel = "smooth" | "snappy" | "bouncy" | "dramatic" | "dreamy";
 export type ReelTransitionEnergy = "calm" | "medium" | "high";
 
@@ -161,6 +163,8 @@ const TRANSITION_CYCLE: TransitionKind[] = [
   "iris",
   "flip",
   "slide-top",
+  "flash-cut",
+  "chromatic-split",
 ];
 
 type Vec = readonly [number, number, number]; // [scale, tx%, ty%]
@@ -219,9 +223,9 @@ function fitCaptionFontSize(
 ): number {
   const maxCaptionWidth = Math.round(width * 0.88);
   const baseFont =
-    theme === "editorial" || theme === "luxe"
+    theme === "editorial" || theme === "luxe" || theme === "magazine"
       ? Math.round(height * 0.045)
-      : theme === "signal"
+      : theme === "signal" || theme === "neo"
         ? Math.round(height * 0.049)
         : Math.round(height * 0.052);
   const longest =
@@ -229,7 +233,7 @@ function fitCaptionFontSize(
       ? "A"
       : lines.reduce((a, b) => (a.length >= b.length ? a : b), lines[0]);
   const len = Math.max(1, longest.length);
-  const maxLs = theme === "editorial" || theme === "luxe" ? 2 : 7;
+  const maxLs = theme === "editorial" || theme === "luxe" || theme === "magazine" ? 2 : 7;
   let fontSize = baseFont;
   for (let step = 0; step < 120; step++) {
     const estWordW = len * fontSize * 0.58 + Math.max(0, len - 1) * maxLs;
@@ -254,6 +258,9 @@ function buildCaptionLines(caption: string, theme: ReelThemeId): string[] {
     manifesto: 18,
     luxe: 18,
     signal: 16,
+    magazine: 17,
+    glitch: 14,
+    neo: 16,
   };
   const maxLinesByTheme: Record<ReelThemeId, number> = {
     impact: 4,
@@ -264,6 +271,9 @@ function buildCaptionLines(caption: string, theme: ReelThemeId): string[] {
     manifesto: 3,
     luxe: 3,
     signal: 4,
+    magazine: 3,
+    glitch: 4,
+    neo: 4,
   };
 
   const maxChars = maxCharsByTheme[theme] ?? 16;
@@ -553,6 +563,49 @@ const SceneDecorFilm: React.FC<{ width: number; height: number }> = ({
   );
 };
 
+const SceneDecorChrome: React.FC<{
+  accent: string;
+  width: number;
+  height: number;
+}> = ({ accent, width, height }) => {
+  const pad = Math.round(width * 0.045);
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none", zIndex: 6 }}>
+      <svg
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${width} ${height}`}
+        style={{ display: "block" }}
+      >
+        <rect
+          x={pad}
+          y={pad}
+          width={width - pad * 2}
+          height={height - pad * 2}
+          rx={18}
+          fill="none"
+          stroke={`${accent}55`}
+          strokeWidth={1.2}
+        />
+        <path
+          d={`M ${pad} ${pad + 46} H ${pad + 160} M ${width - pad - 160} ${pad} H ${width - pad} V ${pad + 160}`}
+          fill="none"
+          stroke={accent}
+          strokeWidth={1.5}
+          opacity={0.8}
+        />
+        <path
+          d={`M ${pad} ${height - pad - 46} H ${pad + 160} M ${width - pad - 160} ${height - pad} H ${width - pad} V ${height - pad - 160}`}
+          fill="none"
+          stroke={accent}
+          strokeWidth={1.5}
+          opacity={0.8}
+        />
+      </svg>
+    </AbsoluteFill>
+  );
+};
+
 const useSpringAnim = (
   startFrame: number,
   from: number,
@@ -617,6 +670,9 @@ function accentForTheme(accent: string, theme: ReelThemeId): string {
   if (theme === "terminal") return `${accent}dd`;
   if (theme === "luxe") return `${accent}99`;
   if (theme === "signal") return `${accent}ee`;
+  if (theme === "magazine") return `${accent}bb`;
+  if (theme === "glitch") return `${accent}ee`;
+  if (theme === "neo") return `${accent}dd`;
   return accent;
 }
 
@@ -781,6 +837,66 @@ function sceneLayout(
         bottomGradient:
           "linear-gradient(to top, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.82) 26%, rgba(0,0,0,0.28) 56%, transparent 74%)",
       };
+    case "magazine":
+      return {
+        ...base,
+        justify: "flex-end" as const,
+        alignItems: "flex-start" as const,
+        textAlign: "left" as const,
+        left: Math.round(width * 0.09),
+        right: Math.round(width * 0.18),
+        captionBottom: Math.round(height * 0.15),
+        kickerBottom: Math.round(height * 0.085),
+        barBottom: Math.round(height * 0.27),
+        maxCaptionWidth: Math.round(width * 0.66),
+        stroke: "0px transparent",
+        uppercase: false,
+        barMode: "horizontal" as const,
+        barLeft: "9%",
+        barWidthPct: 28,
+        vignetteOpacity: 0.78,
+        bottomGradient:
+          "linear-gradient(to top, rgba(8,8,10,0.97) 0%, rgba(8,8,10,0.68) 24%, rgba(8,8,10,0.22) 50%, transparent 68%)",
+      };
+    case "glitch":
+      return {
+        ...base,
+        justify: "flex-end" as const,
+        alignItems: "flex-start" as const,
+        textAlign: "left" as const,
+        left: Math.round(width * 0.06),
+        right: Math.round(width * 0.12),
+        captionBottom: Math.round(height * 0.18),
+        kickerBottom: Math.round(height * 0.095),
+        barBottom: Math.round(height * 0.32),
+        maxCaptionWidth: Math.round(width * 0.84),
+        stroke: "0px transparent",
+        barMode: "horizontal" as const,
+        barLeft: "6%",
+        barWidthPct: 82,
+        bottomGradient:
+          "linear-gradient(to top, rgba(0,0,0,0.99) 0%, rgba(0,0,0,0.86) 26%, rgba(0,0,0,0.24) 56%, transparent 74%)",
+      };
+    case "neo":
+      return {
+        ...base,
+        justify: "flex-end" as const,
+        alignItems: "flex-start" as const,
+        textAlign: "left" as const,
+        left: Math.round(width * 0.07),
+        right: Math.round(width * 0.12),
+        captionBottom: Math.round(height * 0.18),
+        kickerBottom: Math.round(height * 0.09),
+        barBottom: Math.round(height * 0.3),
+        maxCaptionWidth: Math.round(width * 0.76),
+        stroke: "0px transparent",
+        barMode: "horizontal" as const,
+        barLeft: "7%",
+        barWidthPct: 58,
+        vignetteOpacity: 0.74,
+        bottomGradient:
+          "linear-gradient(to top, rgba(3,8,16,0.98) 0%, rgba(3,8,16,0.78) 24%, rgba(3,8,16,0.2) 52%, transparent 72%)",
+      };
     case "impact":
     default:
       return base;
@@ -804,6 +920,12 @@ function sceneArchetypeFor(
   }
   if (theme === "signal") {
     return sceneIndex % 2 === 0 ? "proof" : "detail";
+  }
+  if (theme === "magazine") {
+    return sceneIndex % 2 === 0 ? "detail" : "hero";
+  }
+  if (theme === "glitch" || theme === "neo") {
+    return sceneIndex % 2 === 0 ? "proof" : "quote";
   }
   if (theme === "swiss" || theme === "terminal") {
     return sceneIndex % 2 === 0 ? "proof" : "detail";
@@ -866,6 +988,7 @@ const SceneFrame: React.FC<{
   motionFeel: ReelMotionFeel;
   sceneIndex: number;
   sceneCount: number;
+  incomingTransition?: TransitionKind;
 }> = ({
   scene,
   sceneLen,
@@ -877,6 +1000,7 @@ const SceneFrame: React.FC<{
   motionFeel,
   sceneIndex,
   sceneCount,
+  incomingTransition,
 }) => {
   const frame = useCurrentFrame();
 
@@ -900,6 +1024,15 @@ const SceneFrame: React.FC<{
   const sceneAccent = accentForTheme(scene.accent, theme);
   const archetype = sceneArchetypeFor(theme, sceneIndex, sceneCount);
   const imageTreatment = imageStyleForArchetype(archetype, frame, sceneLen);
+  const chromaticShift = interpolate(frame, [0, 6, 12], [10, 4, 0], {
+    extrapolateRight: "clamp",
+  });
+  const chromaticOpacity = interpolate(frame, [0, 5, 10], [0.55, 0.24, 0], {
+    extrapolateRight: "clamp",
+  });
+  const flashCutOpacity = interpolate(frame, [0, 2, 6], [0.9, 0.35, 0], {
+    extrapolateRight: "clamp",
+  });
 
   const captionLines = buildCaptionLines(scene.caption, theme);
   const kickerSlide = useSpringAnim(4, 40, 0, 18);
@@ -958,6 +1091,49 @@ const SceneFrame: React.FC<{
         />
       </AbsoluteFill>
 
+      {incomingTransition === "chromatic-split" ? (
+        <>
+          <AbsoluteFill
+            style={{
+              transform: `scale(${scale + imageTreatment.imageScaleBoost}) translate(${tx + imageTreatment.imageTranslateX - 0.35}%, ${ty + imageTreatment.imageTranslateY}%)`,
+              transformOrigin: "center center",
+              clipPath: imageTreatment.imageClipPath,
+              opacity: chromaticOpacity,
+              mixBlendMode: "screen",
+            }}
+          >
+            <Img
+              src={scene.src}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                filter: `contrast(1.14) saturate(1.2) drop-shadow(${-chromaticShift}px 0 0 rgba(255,0,102,0.42))`,
+              }}
+            />
+          </AbsoluteFill>
+          <AbsoluteFill
+            style={{
+              transform: `scale(${scale + imageTreatment.imageScaleBoost}) translate(${tx + imageTreatment.imageTranslateX + 0.35}%, ${ty + imageTreatment.imageTranslateY}%)`,
+              transformOrigin: "center center",
+              clipPath: imageTreatment.imageClipPath,
+              opacity: chromaticOpacity,
+              mixBlendMode: "screen",
+            }}
+          >
+            <Img
+              src={scene.src}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                filter: `contrast(1.14) saturate(1.2) drop-shadow(${chromaticShift}px 0 0 rgba(0,255,255,0.38))`,
+              }}
+            />
+          </AbsoluteFill>
+        </>
+      ) : null}
+
       {/* Accent color-grade wash */}
       <AbsoluteFill
         style={{
@@ -1015,6 +1191,73 @@ const SceneFrame: React.FC<{
         >
           Cut {String(sceneIndex + 1).padStart(2, "0")}
         </div>
+      ) : null}
+
+      {theme === "magazine" ? (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              inset: "7%",
+              border: "1px solid rgba(255,255,255,0.1)",
+              zIndex: 3,
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              top: "8.2%",
+              left: "9%",
+              color: "rgba(255,255,255,0.82)",
+              fontFamily: kickerFontFamily,
+              fontSize: 11,
+              letterSpacing: 3,
+              textTransform: "uppercase",
+              zIndex: 6,
+            }}
+          >
+            Vol {String(sceneIndex + 1).padStart(2, "0")}
+          </div>
+        </>
+      ) : null}
+
+      {theme === "glitch" ? (
+        <>
+          <AbsoluteFill
+            style={{
+              background:
+                "linear-gradient(180deg, rgba(255,0,102,0.08) 0%, transparent 18%, transparent 76%, rgba(0,255,255,0.08) 100%)",
+              mixBlendMode: "screen",
+              opacity: 0.7,
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              backgroundImage: "linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px)",
+              backgroundSize: "100% 6px",
+              opacity: 0.14,
+              mixBlendMode: "overlay",
+              pointerEvents: "none",
+            }}
+          />
+        </>
+      ) : null}
+
+      {theme === "neo" ? (
+        <div
+          style={{
+            position: "absolute",
+            inset: "5.5%",
+            border: `1px solid ${sceneAccent}44`,
+            boxShadow: `inset 0 0 0 1px ${sceneAccent}18, 0 0 24px ${sceneAccent}18`,
+            zIndex: 3,
+            pointerEvents: "none",
+          }}
+        />
       ) : null}
 
       {theme === "luxe" ? (
@@ -1186,7 +1429,7 @@ const SceneFrame: React.FC<{
                   letterSpacing,
                   textTransform: layout.uppercase ? "uppercase" : "none",
                   fontFamily: captionFontFamily,
-                  lineHeight: theme === "editorial" || theme === "luxe" ? 0.96 : 1.02,
+                  lineHeight: theme === "editorial" || theme === "luxe" || theme === "magazine" ? 0.96 : 1.02,
                   maxWidth: "100%",
                   whiteSpace: "nowrap",
                   textShadow:
@@ -1194,6 +1437,8 @@ const SceneFrame: React.FC<{
                       ? `0 0 14px ${sceneAccent}, 0 0 2px rgba(255,255,255,0.6)`
                       : theme === "luxe"
                         ? `0 8px 30px rgba(0,0,0,0.88), 0 0 1px rgba(255,255,255,0.35)`
+                      : theme === "glitch"
+                        ? `-2px 0 0 rgba(255,0,102,0.65), 2px 0 0 rgba(0,255,255,0.65), 0 4px 20px rgba(0,0,0,0.9)`
                       : `0 4px 20px rgba(0,0,0,0.9), 0 0 2px ${sceneAccent}`,
                   transform:
                     archetype === "proof"
@@ -1230,14 +1475,14 @@ const SceneFrame: React.FC<{
           <span
             style={{
               fontSize: Math.round(height * 0.018),
-              fontWeight: theme === "luxe" ? 500 : 600,
+              fontWeight: theme === "luxe" || theme === "magazine" ? 500 : 600,
               color:
-                theme === "editorial" || theme === "luxe"
+                theme === "editorial" || theme === "luxe" || theme === "magazine"
                   ? "rgba(255,255,255,0.82)"
                   : theme === "signal"
                     ? "rgba(255,255,255,0.76)"
                     : sceneAccent,
-              letterSpacing: theme === "editorial" || theme === "luxe" ? 2 : 4,
+              letterSpacing: theme === "editorial" || theme === "luxe" || theme === "magazine" ? 2 : 4,
               textTransform: "uppercase",
               fontFamily: kickerFontFamily,
               textShadow: "0 2px 8px rgba(0,0,0,0.9)",
@@ -1247,7 +1492,7 @@ const SceneFrame: React.FC<{
               lineHeight: 1.35,
             }}
           >
-            {theme === "editorial" || theme === "luxe" ? scene.kicker : `◆ ${scene.kicker} ◆`}
+            {theme === "editorial" || theme === "luxe" || theme === "magazine" ? scene.kicker : `◆ ${scene.kicker} ◆`}
           </span>
         </div>
       ) : null}
@@ -1258,19 +1503,35 @@ const SceneFrame: React.FC<{
       {decorStyle === "film" ? (
         <SceneDecorFilm width={width} height={height} />
       ) : null}
+      {decorStyle === "chrome" ? (
+        <SceneDecorChrome accent={sceneAccent} width={width} height={height} />
+      ) : null}
 
       {/* Film grain + flash pop */}
       <FilmGrain />
       <AbsoluteFill
         style={{
           backgroundColor: "#fff",
-          opacity: interpolate(frame, [0, 2, 4], [0, motion.flash, 0], {
-            extrapolateLeft: "clamp",
-            extrapolateRight: "clamp",
-          }),
+          opacity:
+            incomingTransition === "flash-cut"
+              ? flashCutOpacity
+              : interpolate(frame, [0, 2, 4], [0, motion.flash, 0], {
+                  extrapolateLeft: "clamp",
+                  extrapolateRight: "clamp",
+                }),
           mixBlendMode: "screen",
         }}
       />
+      {incomingTransition === "chromatic-split" ? (
+        <AbsoluteFill
+          style={{
+            background:
+              "linear-gradient(90deg, rgba(255,0,102,0.08) 0%, transparent 28%, transparent 72%, rgba(0,255,255,0.08) 100%)",
+            opacity: chromaticOpacity,
+            mixBlendMode: "screen",
+          }}
+        />
+      ) : null}
     </AbsoluteFill>
   );
 };
@@ -1440,6 +1701,10 @@ function makeTransitionPresentation(
       return clockWipe({ width: w, height: h }) as unknown as AnyPresentation;
     case "iris":
       return iris({ width: w, height: h }) as unknown as AnyPresentation;
+    case "flash-cut":
+      return fade() as AnyPresentation;
+    case "chromatic-split":
+      return slide({ direction: "from-right" }) as AnyPresentation;
     case "fade":
     default:
       return fade() as AnyPresentation;
@@ -1531,6 +1796,7 @@ export const CinematicReel: React.FC<CinematicReelProps> = ({
                 motionFeel={motionFeel}
                 sceneIndex={i}
                 sceneCount={resolved.length}
+                incomingTransition={i > 0 ? scene.transition : undefined}
               />
               {sceneTTSPaths?.[i] ? (
                 <Audio

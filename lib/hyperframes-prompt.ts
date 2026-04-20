@@ -266,7 +266,7 @@ export function buildHyperframesCreativeBlock(
 ${motionLines[c.motionFeel]}
 ${captionLines[c.captionTone]}
 ${transLines[c.transitionEnergy]}
-Map transitions to JSON "transition" field: slide-right | slide-left | slide-top | slide-bottom | flip | fade | wipe.
+Map transitions to JSON "transition" field: slide-right | slide-left | slide-top | slide-bottom | flip | fade | wipe | flash-cut | chromatic-split.
 `;
 }
 
