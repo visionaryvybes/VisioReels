@@ -1,11 +1,5 @@
 import React from "react";
 import { Composition } from "remotion";
-import { GLITCHRAW } from "./compositions/GLITCHRAW";
-import { GLITCHREEL } from "./compositions/GLITCHREEL";
-import { GlitchProtocol } from "./compositions/GlitchProtocol";
-import { UrbanDrift } from "./compositions/UrbanDrift";
-import { Momentum } from "./compositions/Momentum";
-import { NewVideo } from "./compositions/NewVideo";
 import { NeoFuturism } from "./compositions/NeoFuturism";
 import { ConcreteHorizon } from "./compositions/ConcreteHorizon";
 import { SummitView } from "./compositions/SummitView";

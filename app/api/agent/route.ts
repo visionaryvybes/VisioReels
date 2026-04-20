@@ -433,20 +433,6 @@ async function callOllamaChat(messages: ChatMessage[], jsonMode: boolean): Promi
 // generating any code — it's the creative director briefing the executor.
 // Gemma does NOT think creatively when coding; it just executes the brief.
 
-const PRIMITIVES_CATALOG = `
-AVAILABLE REMOTION PRIMITIVES (import from "../components/primitives"):
-  HUDCorners       — mission-control bracket corners that slide in; props: color, size, opacity, revealFrames
-  StarField        — deterministic parallax star layer; props: count, speed, opacity, seed, layers
-  GridOverlay      — flat or perspective SVG grid; props: opacity, color, cellSize, perspective, revealFrames
-  KineticTitle     — per-word spring stagger animation; props: text, frame, color, fontFamily, fontSize, fontWeight, stagger, reveal("slide-up"|"fade"|"scale"|"slide-right"), startFrame
-  TelemetryCounter — animated number counter with label+unit; props: from, to, frame, duration, decimals, label, unit, color, timeFormat
-  StatusBar        — fixed top/bottom HUD strip with colored dot indicators; props: items[{label,status("ok"|"warn"|"info"|"active"),value}], position("top"|"bottom")
-  DataReadout      — grid of labeled metrics; props: metrics[{label,value,unit,animateTo}], direction, stagger, accentColor
-  ScanLines        — CRT scanline overlay; props: opacity, lineSpacing, animate, speed
-  LightLeak        — screen-blend radial flash; props: color, peakFrame, duration, opacity, origin
-  NoiseLayer       — animated film grain using @remotion/noise; props: opacity, speed, scale, blendMode("overlay"|"screen"|"multiply"), seed
-`.trim();
-
 /**
  * Detects the creative intent from the user's brief — roast, comedy, hype,
  * motivation, tutorial, etc. Returns structured intent metadata for prompt injection.
@@ -835,50 +821,6 @@ async function runManagedBrainPass(opts: {
   }
 
   return { concept, brief, critique };
-}
-
-async function describeImage(a: ImageStats, captionTone?: HyperframesCaptionTone): Promise<VisionNote> {
-  const toneHint = captionTone
-    ? `Copy tone is "${captionTone}" — note what mood/lighting supports it.`
-    : "";
-  const prompt = `You are an art director analyzing a photo for a social media video or slide. Look at this image carefully and respond with ONE JSON object:
-{
-  "subject":      string,   // WHAT is in the frame: specific objects, people, spaces — one concrete sentence
-  "mood":         string,   // 1-3 words mood (e.g. "serene minimalist", "vibrant urban", "luxury warm")
-  "palette":      string[], // 3 dominant hex colors extracted from the image
-  "composition":  string,   // spatial description: where are subjects? e.g. "subject centered, dark edges", "person right-third, open sky left"
-  "text_zone":    string,   // best placement for overlay text: "bottom-left" | "top-center" | "bottom-center" | "left-panel" | "right-panel" | "top-left" | "center"
-  "content_type": string,   // image category: "interior-design" | "portrait" | "product" | "landscape" | "architecture" | "food" | "fashion" | "automotive" | "abstract" | "event"
-  "copy_style":   string    // 3-5 words describing what TEXT on this image should feel like: e.g. "luxury lifestyle aspirational", "editorial fashion statement", "tech product minimal", "real estate premium"
-}
-${toneHint}
-Rules: text_zone must be where there is OPEN SPACE or dark area in the image (avoid faces/focal subjects). Return ONLY the JSON.`;
-  try {
-    const raw = await callOllamaChat(
-      [{ role: "user", content: prompt, images: [a.base64] }],
-      true
-    );
-    const parsed = safeJson(raw) as Partial<VisionNote & { text_zone: string; content_type: string; copy_style: string; composition: string }> | null;
-    const palette = Array.isArray(parsed?.palette)
-      ? parsed!.palette
-          .filter((h): h is string => typeof h === "string" && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(h.trim()))
-          .map((h) => h.trim())
-          .slice(0, 4)
-      : [];
-    return {
-      path: a.path,
-      subject: typeof parsed?.subject === "string" ? parsed.subject.trim().slice(0, 220) : "",
-      mood: typeof parsed?.mood === "string" ? parsed.mood.trim().slice(0, 40) : "",
-      palette: palette.length ? palette : [a.dominant],
-      brightness: a.brightness,
-      composition: typeof parsed?.composition === "string" ? parsed.composition.trim().slice(0, 140) : undefined,
-      text_zone: typeof parsed?.text_zone === "string" ? parsed.text_zone.trim().slice(0, 40) : undefined,
-      content_type: typeof parsed?.content_type === "string" ? parsed.content_type.trim().slice(0, 40) : undefined,
-      copy_style: typeof parsed?.copy_style === "string" ? parsed.copy_style.trim().slice(0, 80) : undefined,
-    };
-  } catch {
-    return { path: a.path, subject: "", mood: "", palette: [a.dominant], brightness: a.brightness };
-  }
 }
 
 /**
@@ -1336,19 +1278,6 @@ function extractJson(response: string): string | null {
   return null;
 }
 
-function htmlSlideTiming(pace: Pace): { sceneLen: number; transLen: number } {
-  switch (pace) {
-    case "chill":
-      return { sceneLen: 110, transLen: 24 };
-    case "fast":
-      return { sceneLen: 55, transLen: 12 };
-    case "hype":
-      return { sceneLen: 38, transLen: 8 };
-    default:
-      return { sceneLen: 90, transLen: 12 };
-  }
-}
-
 function extractHtmlSlidesArray(raw: unknown): string[] {
   if (!raw || typeof raw !== "object") return [];
   const slides = (raw as Record<string, unknown>).slides;
@@ -1455,7 +1384,6 @@ These files are the full-resolution assets on disk. Use each EXACT \`src\` below
 ${attachments
   .map((a, i) => {
     const note = byPath.get(a.path);
-    const safeAlt = a.name.replace(/"/g, "'");
     if (!note || !note.subject) {
       return `  ${i + 1}. REQUIRED src="${a.path}"   (${a.name})`;
     }

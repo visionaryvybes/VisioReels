@@ -122,7 +122,6 @@ export function AIPanel() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [vbRunning, setVbRunning] = useState<boolean | null>(null);
-  const [vbProfiles, setVbProfiles] = useState<{ id: string; name: string }[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const codeEndRef = useRef<HTMLDivElement>(null);
@@ -152,7 +151,6 @@ export function AIPanel() {
       .then(r => r.json())
       .then((d: { running: boolean; profiles: { id: string; name: string }[]; presetVoices: PresetVoiceGroup[] }) => {
         setVbRunning(d.running);
-        setVbProfiles(d.profiles ?? []);
         if (d.presetVoices?.length) {
           setTTSPresetVoices(d.presetVoices);
         }

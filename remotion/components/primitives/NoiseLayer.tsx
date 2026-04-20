@@ -37,7 +37,6 @@ export const NoiseLayer: React.FC<Props> = ({
       }
     }
     return arr;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, cols]);
 
   return (

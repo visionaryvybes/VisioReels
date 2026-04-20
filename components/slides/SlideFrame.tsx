@@ -480,17 +480,6 @@ export function resolveInk(
   return { effectiveInk: preset.ink, needsScrim: true };
 }
 
-// Pull the first colour stop out of "linear-gradient(...)" so we can judge
-// whether the surface behind the text is light or dark.
-function stripLinearGradient(surface: string): string {
-  if (!surface) return '#000000';
-  if (!surface.startsWith('linear-gradient')) return surface;
-  const match = surface.match(/#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})/g);
-  if (!match || match.length === 0) return '#000000';
-  // last stop is usually what the text sits on
-  return match[match.length - 1];
-}
-
 // A soft multi-step shadow so text on a busy image never dissolves.
 // Dark shadow for light text, light shadow for dark text.
 function scrimShadow(ink: string): string {
