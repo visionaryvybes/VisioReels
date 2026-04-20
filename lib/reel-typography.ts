@@ -6,7 +6,9 @@ export type ReelTypographyId =
   | 'editorial'
   | 'swiss'
   | 'mono'
-  | 'fraunces';
+  | 'fraunces'
+  | 'quiet'
+  | 'zine';
 
 export type ReelDecorId = 'none' | 'minimal' | 'film';
 export type ReelThemeId =
@@ -57,6 +59,18 @@ export const REEL_TYPOGRAPHY: Record<
     kickerFont: "var(--font-dm-sans), system-ui, sans-serif",
     theme: 'manifesto',
   },
+  quiet: {
+    label: 'QUIET',
+    captionFont: "var(--font-instrument-serif), Georgia, serif",
+    kickerFont: "var(--font-dm-sans), system-ui, sans-serif",
+    theme: 'editorial',
+  },
+  zine: {
+    label: 'ZINE',
+    captionFont: "var(--font-bricolage), system-ui, sans-serif",
+    kickerFont: "var(--font-bricolage), system-ui, sans-serif",
+    theme: 'brutal',
+  },
 };
 
 export const REEL_DECOR_LABELS: Record<ReelDecorId, string> = {
@@ -66,7 +80,7 @@ export const REEL_DECOR_LABELS: Record<ReelDecorId, string> = {
 };
 
 export function parseReelTypographyId(v: unknown): ReelTypographyId {
-  if (v === 'syne' || v === 'brutal' || v === 'editorial' || v === 'swiss' || v === 'mono' || v === 'fraunces') {
+  if (v === 'syne' || v === 'brutal' || v === 'editorial' || v === 'swiss' || v === 'mono' || v === 'fraunces' || v === 'quiet' || v === 'zine') {
     return v;
   }
   return 'syne';

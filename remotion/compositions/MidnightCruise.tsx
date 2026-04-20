@@ -6,65 +6,82 @@ export const MidnightCruise: React.FC = () => {
   return (
     <CinematicReel
       brandName={"VISIO●REEL"}
+      captionFontFamily={"var(--font-archivo-black), system-ui, sans-serif"}
+      kickerFontFamily={"var(--font-dm-mono), monospace"}
+      decorStyle={"film"}
+      theme={"brutal"}
+      motionFeel={"bouncy"}
+      transitionEnergy={"high"}
+      gradePreset={"warm_cinematic"}
       sceneLengthInFrames={173}
       transitionLengthInFrames={8}
       scenes={[
         {
           "src": "uploads/6f25c54707.png",
-          "caption": "THE GLOW UP IS REAL.",
-          "kicker": "Some secrets are best left shrouded in smoke and red light. Don't look too close.",
-          "accent": "#FF0000"
-        },
-        {
-          "src": "uploads/91933ae417.png",
-          "caption": "DON'T LOOK BACK.",
-          "kicker": "The things you see in the rearview mirror are never what they seem.",
-          "accent": "#cc0000",
-          "transition": "wipe"
-        },
-        {
-          "src": "uploads/e50acb0870.png",
-          "caption": "RAW ENERGY ONLY.",
-          "kicker": "Every exhale is a statement. Every moment is cinematic.",
-          "accent": "#a03321",
-          "transition": "slide-right"
-        },
-        {
-          "src": "uploads/7b9b0c268b.png",
-          "caption": "VIBE CHECK: PASSED.",
-          "kicker": "Serving main character energy since forever. This is the aesthetic.",
-          "accent": "#ff69b4",
-          "transition": "flip"
-        },
-        {
-          "src": "uploads/dd0971620d.png",
-          "caption": "THE ORIGINAL MOOD.",
-          "kicker": "Some things just have that timeless, undeniable gravitas.",
-          "accent": "#b88600",
-          "transition": "slide-left"
-        },
-        {
-          "src": "uploads/84607d8987.png",
-          "caption": "ELEGANCE IN THE SMOKE.",
-          "kicker": "The kind of quiet confidence that needs no explanation. Just the moment.",
-          "accent": "#808080",
-          "transition": "wipe"
+          "caption": "LOOK CLOSER",
+          "kicker": "the smoke hangs heavy, a perfect, faded curtain across the glass.",
+          "accent": "#CC6600",
+          "transition": "wipe-right",
+          "narration": "The smoke hangs heavy, a perfect, faded curtain across the glass."
         },
         {
           "src": "uploads/5afe1ee1ce.png",
-          "caption": "GRIT. NO FILTERS.",
-          "kicker": "This is the soundtrack to the nights you won't forget. Pure, raw cinema.",
-          "accent": "#e65100",
-          "transition": "slide-bottom"
+          "caption": "VINTAGE NOIR",
+          "kicker": "another night, another secret whispered through the exhaust.",
+          "accent": "#663300",
+          "transition": "flip",
+          "narration": "Another night, another secret whispered through the exhaust."
+        },
+        {
+          "src": "uploads/dd0971620d.png",
+          "caption": "GRIT. COOL. NIGHT.",
+          "kicker": "the patterned jacket tells a story you can't read.",
+          "accent": "#996633",
+          "transition": "slide-left",
+          "narration": "The patterned jacket tells a story you can't read."
+        },
+        {
+          "src": "uploads/7b9b0c268b.png",
+          "caption": "PINK HAZE. POP ART.",
+          "kicker": "this is why the neon bleeds into everything.",
+          "accent": "#FF6699",
+          "transition": "wipe-bottom",
+          "narration": "The neon bleeds into everything."
+        },
+        {
+          "src": "uploads/91933ae417.png",
+          "caption": "CLOWN ECHO.",
+          "kicker": "the smile is painted on, but the eyes are miles away.",
+          "accent": "#CC3300",
+          "transition": "slide-right",
+          "narration": "The smile is painted on, but the eyes are miles away."
+        },
+        {
+          "src": "uploads/e50acb0870.png",
+          "caption": "HIGH CONTRAST.",
+          "kicker": "the red hair catches the single, harsh streetlight.",
+          "accent": "#FF3366",
+          "transition": "fade",
+          "narration": "The red hair catches the single, harsh streetlight."
         },
         {
           "src": "uploads/7dfcbe29b3.png",
-          "caption": "THE ENDING SHOT.",
-          "kicker": "Keep the camera rolling. The story never stops.",
-          "accent": "#a0522d",
-          "transition": "fade"
+          "caption": "THE GAZE.",
+          "kicker": "a moment caught between the passing headlights and the smoke.",
+          "accent": "#180808",
+          "transition": "clock-wipe",
+          "narration": "A moment caught between the passing headlights and the smoke."
+        },
+        {
+          "src": "uploads/84607d8987.png",
+          "caption": "SAVE THE REFERENCE.",
+          "kicker": "this is the archive shot. the final frame.",
+          "accent": "#080808",
+          "transition": "iris",
+          "narration": "This is the archive shot. The final frame."
         }
       ]}
+      sceneTTSPaths={["tts/MidnightCruise-scene-0.wav","tts/MidnightCruise-scene-1.wav","tts/MidnightCruise-scene-2.wav","tts/MidnightCruise-scene-3.wav","tts/MidnightCruise-scene-4.wav","tts/MidnightCruise-scene-5.wav","tts/MidnightCruise-scene-6.wav","tts/MidnightCruise-scene-7.wav"]}
     />
   );
 };

@@ -1059,6 +1059,40 @@ function safeJson(raw: string): unknown | null {
   return null;
 }
 
+function parseGemmaJsonObject(raw: string): { value: unknown | null; extracted: string | null; error?: string } {
+  const extracted = extractJson(raw);
+  if (!extracted) {
+    return { value: null, extracted: null, error: "No JSON object found in model output" };
+  }
+
+  const candidates = [
+    extracted,
+    extracted
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/,\s*([}\]])/g, "$1")
+      .replace(/[\u0000-\u0019]+/g, " "),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      return { value: JSON.parse(candidate), extracted: candidate };
+    } catch (e) {
+      const fallback = safeJson(candidate);
+      if (fallback !== null) return { value: fallback, extracted: candidate };
+      if (candidate === candidates[candidates.length - 1]) {
+        return {
+          value: null,
+          extracted,
+          error: e instanceof Error ? e.message : String(e),
+        };
+      }
+    }
+  }
+
+  return { value: null, extracted, error: "Unknown JSON parse failure" };
+}
+
 const VALID_TRANSITIONS = [
   "slide-right",
   "slide-left",
@@ -1905,6 +1939,51 @@ ${badJson.slice(0, 14_000)}`;
     const p = safeJson(raw);
     if (p && typeof p === "object" && Array.isArray((p as Record<string, unknown>).scenes)) {
       return JSON.stringify(p);
+    }
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
+async function repairReelJsonForParseError(
+  badJson: string,
+  userBrief: string,
+  parseError: string,
+  lockedSrcOrder?: string[]
+): Promise<string | null> {
+  const orderBlock =
+    lockedSrcOrder && lockedSrcOrder.length > 0
+      ? `
+LOCKED PHOTO ORDER — ${lockedSrcOrder.length} scenes only:
+${lockedSrcOrder.map((s, i) => `  Scene ${i + 1}: "src" MUST be exactly "${s}"`).join("\n")}
+Do not add, remove, reorder, or duplicate scenes.`
+      : "";
+
+  const prompt = `${GEMMA_JSON_CREATIVE_DIRECTIVES}
+
+You are fixing malformed reel JSON. The current output does not parse.
+
+STRICT:
+- Return ONE valid JSON object only. No markdown fences.
+- Fix syntax only where possible, but also correct obviously broken string quoting or commas.
+- Keep "title" / "brandName" unless clearly invalid.
+${orderBlock || "- Keep scene count stable and src values valid."}
+- Every scene must keep: src, caption, kicker, accent, transition, narration
+
+Parse error:
+${parseError}
+
+User brief:
+${userBrief.slice(0, 600)}
+
+INPUT JSON:
+${badJson.slice(0, 14_000)}`;
+  try {
+    const raw = await callOllamaChat([{ role: "user", content: prompt }], true);
+    const repaired = parseGemmaJsonObject(raw);
+    if (repaired.value && typeof repaired.value === "object" && Array.isArray((repaired.value as Record<string, unknown>).scenes)) {
+      return JSON.stringify(repaired.value);
     }
   } catch {
     /* fall through */
@@ -3104,18 +3183,33 @@ export async function POST(req: NextRequest) {
           return;
         }
 
-        const jsonStr = extractJson(response);
-        if (!jsonStr) {
+        const parsedJson = parseGemmaJsonObject(response);
+        if (!parsedJson.extracted) {
           send({ type: "error", content: "Gemma didn't output a JSON block. Try again." });
           return;
         }
 
         let parsed: unknown;
-        try {
-          parsed = JSON.parse(jsonStr);
-        } catch (e) {
-          send({ type: "error", content: `Invalid JSON from Gemma: ${(e as Error).message}` });
-          return;
+        if (parsedJson.value !== null) {
+          parsed = parsedJson.value;
+        } else {
+          send({ type: "status", text: "Repair pass · fixing malformed JSON before validation…" });
+          const repaired = await repairReelJsonForParseError(
+            parsedJson.extracted,
+            userMessage,
+            parsedJson.error ?? "Unknown JSON parse error",
+            attachments.map((a) => a.path)
+          );
+          if (!repaired) {
+            send({ type: "error", content: `Invalid JSON from Gemma: ${parsedJson.error ?? "unknown parse error"}` });
+            return;
+          }
+          try {
+            parsed = JSON.parse(repaired);
+          } catch (e) {
+            send({ type: "error", content: `Invalid JSON from Gemma after repair: ${(e as Error).message}` });
+            return;
+          }
         }
 
         const validPaths = new Set(attachments.map((a) => a.path));

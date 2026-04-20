@@ -84,6 +84,17 @@ const STYLE_CHIPS = [
   'VECTOR',
 ];
 
+const FEATURED_VOICE_STYLES: Record<string, { tag: string; note: string }> = {
+  af_bella: { tag: 'Creator', note: 'expressive, polished social read' },
+  af_heart: { tag: 'Soft', note: 'emotional, warm, intimate' },
+  af_alloy: { tag: 'Studio', note: 'clean explainer / product voice' },
+  af_nova: { tag: 'Modern', note: 'bright, crisp, premium app feel' },
+  am_onyx: { tag: 'Authority', note: 'deep premium narrator' },
+  am_michael: { tag: 'Natural', note: 'casual trusted storyteller' },
+  bm_george: { tag: 'Classic', note: 'British documentary tone' },
+  bm_fable: { tag: 'Story', note: 'measured audiobook cadence' },
+};
+
 const ASPECT_ORDER: ReelAspect[] = ['9:16', '1:1', '4:5', '16:9'];
 const PACE_ORDER: ReelPace[] = ['chill', 'balanced', 'fast', 'hype'];
 const MOTION_ORDER: MotionFeel[] = ['smooth', 'snappy', 'bouncy', 'dramatic', 'dreamy'];
@@ -369,7 +380,7 @@ export function AIPanel() {
 
   const visionByPath = new Map(visionNotes.map((n) => [n.path, n]));
 
-  const TYPO_IDS: ReelTypographyId[] = ['syne', 'brutal', 'editorial', 'swiss', 'mono', 'fraunces'];
+  const TYPO_IDS: ReelTypographyId[] = ['syne', 'brutal', 'editorial', 'swiss', 'mono', 'fraunces', 'quiet', 'zine'];
   const DECOR_IDS: ReelDecorId[] = ['none', 'minimal', 'film'];
 
   return (
@@ -798,6 +809,7 @@ export function AIPanel() {
             const selectedVoiceMeta = allVoices.find(v => v.id === ttsVoiceId);
             const selectedName = selectedVoiceMeta?.name ?? ttsVoiceId;
             const selectedLabel = selectedVoiceMeta?.label ?? '';
+            const featuredVoices = allVoices.filter(v => FEATURED_VOICE_STYLES[v.id]);
 
             // All accents available for current gender
             const availableAccents = [...new Set(genderGroups.map(g => g.accent))];
@@ -882,6 +894,43 @@ export function AIPanel() {
                 )}
 
                 {/* Voice name grid */}
+                {featuredVoices.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ fontSize: 9, color: '#666', fontFamily: 'var(--font-dm-mono), monospace', letterSpacing: '0.1em' }}>
+                      FEATURED PRESETS
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {featuredVoices.map(v => {
+                        const active = ttsVoiceId === v.id;
+                        const meta = FEATURED_VOICE_STYLES[v.id];
+                        return (
+                          <button
+                            key={v.id}
+                            onClick={() => setTTSVoiceId(v.id)}
+                            disabled={isGenerating}
+                            title={meta.note}
+                            style={{
+                              padding: '6px 10px',
+                              borderRadius: 10,
+                              border: `1px solid ${active ? '#ccff00' : '#2a2a2a'}`,
+                              background: active ? 'rgba(204,255,0,0.12)' : 'rgba(255,255,255,0.02)',
+                              color: active ? '#ccff00' : '#cfcfcf',
+                              fontSize: 9,
+                              fontFamily: 'var(--font-dm-mono), monospace',
+                              letterSpacing: '0.04em',
+                              cursor: isGenerating ? 'not-allowed' : 'pointer',
+                              textAlign: 'left',
+                            }}
+                          >
+                            <div style={{ fontWeight: 700 }}>{v.name}</div>
+                            <div style={{ opacity: 0.65, marginTop: 2 }}>{meta.tag}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {voiceChips.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                     {voiceChips.map(v => {
@@ -913,7 +962,7 @@ export function AIPanel() {
 
                 {/* Selected voice summary */}
                 <div style={{ fontSize: 9, color: '#555', fontFamily: 'var(--font-dm-mono), monospace', letterSpacing: '0.06em' }}>
-                  🎙 {selectedName}{selectedLabel ? ` · ${selectedLabel}` : ''} · kokoro
+                  🎙 {selectedName}{selectedLabel ? ` · ${selectedLabel}` : ''}{FEATURED_VOICE_STYLES[ttsVoiceId] ? ` · ${FEATURED_VOICE_STYLES[ttsVoiceId].note}` : ''} · kokoro
                 </div>
               </div>
             );

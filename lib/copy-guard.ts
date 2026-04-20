@@ -22,12 +22,23 @@ const BANNED_PHRASES = [
   "journey",
   "disruptive",
   "synergy",
+  "untamed power",
+  "raw intensity",
+  "study in patience",
+  "commanding the view",
+  "majestic posture",
+  "the quiet weight",
+  "pure focus",
 ] as const;
 
 const WEAK_PATTERNS = [
   "comment your thoughts",
   "link in bio",
   "follow for more",
+  "watchful in the",
+  "through the grass",
+  "emerging from the",
+  "eyes on the lens",
 ] as const;
 
 export function normalizeText(text: string): string {
