@@ -30,7 +30,7 @@ import {
   HTML_SLIDES_CREATIVE_DIRECTIVES,
   PM_CRITIC_DIRECTIVES,
 } from "@/lib/agent-creative-directives";
-import { generateSpeech, resolveProfileForNarration, ensurePresetProfile } from "@/lib/voicebox";
+import { generateSpeech, resolveProfileForNarration, ensurePresetProfile, warmupVoicebox } from "@/lib/voicebox";
 import { buildVoiceDirection, buildNarrationText, type CaptionTone, type MotionFeel } from "@/lib/voice-director";
 import { buildCulturalContext, type Platform } from "@/lib/cultural-context";
 
@@ -436,7 +436,7 @@ async function callOllamaChat(
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("aborted") || msg.includes("AbortError")) {
-      throw new Error(`Ollama timed out after ${CHAT_TIMEOUT_MS / 1000}s — brain/vision pass is taking too long`);
+      throw new Error(`Ollama timed out after ${timeoutMs / 1000}s — brain/vision pass is taking too long`);
     }
     throw err;
   } finally {
@@ -2607,6 +2607,13 @@ export async function POST(req: NextRequest) {
         const hfWebQueriesEarly = buildContextQueries(userMessage, [], []);
         let hfPreloadedWebContext = "";
 
+        // Voicebox warmup — same pattern as REMOTION pipeline
+        if (useTTS) {
+          resolveVoiceProfile(ttsVoice).then((p) => {
+            if (p) void warmupVoicebox(p.id, p.engine ?? "kokoro");
+          }).catch(() => { /* offline — ignore */ });
+        }
+
         if (hasAttachments) {
           send({
             type: "status",
@@ -2902,6 +2909,15 @@ export async function POST(req: NextRequest) {
           return;
         }
         const analyses = analysesForAttachments(attachments, analysisResults);
+
+        // Voicebox warmup — fire-and-forget before vision/web so the kokoro model is
+        // already loaded in memory by the time TTS generation runs (saves 10-20s on
+        // first TTS call when server was freshly started).
+        if (useTTS) {
+          resolveVoiceProfile(ttsVoice).then((p) => {
+            if (p) void warmupVoicebox(p.id, p.engine ?? "kokoro");
+          }).catch(() => { /* offline — ignore */ });
+        }
 
         // Stage 1 — vision + web run simultaneously.
         // Web fetch only needs the brief text (no vision notes required), so it can start immediately.

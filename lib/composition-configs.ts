@@ -36,16 +36,30 @@ export async function loadCompositionComponent(
   if (!/^[A-Za-z0-9_-]+$/.test(filename)) {
     throw new Error(`Unsafe composition id: ${compId}`);
   }
-  try {
-    const mod: Record<string, unknown> = await import(
-      /* webpackInclude: /\.tsx$/ */
-      /* webpackMode: "lazy" */
-      `../remotion/compositions/${filename}.tsx`
-    );
-    const comp = (mod[filename] ?? mod.default) as ComponentType | undefined;
-    if (!comp) throw new Error(`Module loaded but missing export '${filename}'`);
-    return comp;
-  } catch (e) {
-    throw new Error(`Could not load composition '${compId}': ${(e as Error).message}`);
+
+  // Retry up to 4 times with increasing delays.
+  // The agent writes the TSX file right before sending the reel_spec SSE event.
+  // Turbopack may need a moment to compile the new file before the dynamic import works.
+  const RETRY_DELAYS = [0, 400, 1000, 2500];
+  let lastErr: Error | null = null;
+
+  for (const delay of RETRY_DELAYS) {
+    if (delay > 0) {
+      await new Promise<void>((res) => setTimeout(res, delay));
+    }
+    try {
+      const mod: Record<string, unknown> = await import(
+        /* webpackInclude: /\.tsx$/ */
+        /* webpackMode: "lazy" */
+        `../remotion/compositions/${filename}.tsx`
+      );
+      const comp = (mod[filename] ?? mod.default) as ComponentType | undefined;
+      if (!comp) throw new Error(`Module loaded but missing export '${filename}'`);
+      return comp;
+    } catch (e) {
+      lastErr = e as Error;
+    }
   }
+
+  throw new Error(`Could not load composition '${compId}' after retries: ${lastErr?.message ?? "unknown error"}`);
 }

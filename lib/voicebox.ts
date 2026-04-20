@@ -236,6 +236,43 @@ export async function isVoiceboxRunning(): Promise<boolean> {
 }
 
 /**
+ * Pre-warm the kokoro model so the FIRST real TTS call doesn't take 10-20s
+ * waiting for the model to load. Fire once at the START of any pipeline that
+ * uses TTS — run without await (fire-and-forget) so it runs in parallel with
+ * vision + web context fetching.
+ *
+ * The warmup generates a 1-word utterance and discards the output.
+ * If Voicebox is offline or returns an error the promise resolves quietly.
+ */
+export async function warmupVoicebox(profileId: string, engine?: string): Promise<void> {
+  try {
+    const controller = new AbortController();
+    // Give warmup a generous timeout — model load can take up to 12s on some machines.
+    const timer = setTimeout(() => controller.abort(), 20000);
+    const body: Record<string, unknown> = {
+      profile_id: profileId,
+      text: "Ready.",
+      normalize: false,
+    };
+    if (engine) body.engine = engine;
+
+    const res = await fetch(`${VOICEBOX_BASE}/generate/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    // Drain the body so the HTTP connection is properly released, then discard.
+    if (res.ok && res.body) {
+      await res.body.cancel();
+    }
+  } catch {
+    // Offline or timeout — no-op. Real TTS calls will handle the retry themselves.
+  }
+}
+
+/**
  * Fetch all kokoro preset voices from Voicebox and return a flat list with
  * gender/language inferred from the voice_id prefix.
  * Returns [] if Voicebox is unreachable.

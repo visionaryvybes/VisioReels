@@ -160,8 +160,12 @@ function EmptyState() {
 function LoadingState() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16 }}>
-      <div style={{ padding: 16, border: '1px solid #ccff00', background: '#000', color: '#ccff00', fontFamily: 'var(--font-dm-mono), monospace', fontSize: 11, letterSpacing: '0.1em' }}>
-        LOADING VIDEO...
+      <div style={{ padding: 16, border: '1px solid #ccff00', background: '#000', color: '#ccff00', fontFamily: 'var(--font-dm-mono), monospace', fontSize: 11, letterSpacing: '0.1em', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ccff00', boxShadow: '0 0 8px #ccff00', animation: 'lp-pulse-dot 1s ease-in-out infinite', flexShrink: 0 }} />
+        COMPILING COMPOSITION...
+      </div>
+      <div style={{ fontFamily: 'var(--font-dm-mono), monospace', fontSize: 9, color: '#444', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
+        Turbopack is picking up the new file
       </div>
     </div>
   );
