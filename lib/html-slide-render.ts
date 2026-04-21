@@ -171,6 +171,9 @@ function bundledFfmpegPath(): string | null {
     // Optional dependency. Users can also set FFMPEG_PATH.
   }
 
+  const localStatic = path.join(process.cwd(), "node_modules", "ffmpeg-static", process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
+  if (fs.existsSync(localStatic)) return localStatic;
+
   return null;
 }
 
