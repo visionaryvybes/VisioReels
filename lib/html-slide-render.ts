@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
 import { spawn } from "child_process";
 import { chromium, type Browser, type LaunchOptions, type Page } from "playwright";
 
@@ -162,27 +163,14 @@ function bundledFfmpegPath(): string | null {
   const explicit = process.env.FFMPEG_PATH?.trim();
   if (explicit && fs.existsSync(explicit)) return explicit;
 
-  const candidates =
-    process.platform === "darwin"
-      ? [
-          "node_modules/@remotion/compositor-darwin-arm64/ffmpeg",
-          "node_modules/@remotion/compositor-darwin-x64/ffmpeg",
-        ]
-      : process.platform === "linux"
-        ? [
-            "node_modules/@remotion/compositor-linux-x64-gnu/ffmpeg",
-            "node_modules/@remotion/compositor-linux-arm64-gnu/ffmpeg",
-            "node_modules/@remotion/compositor-linux-x64-musl/ffmpeg",
-            "node_modules/@remotion/compositor-linux-arm64-musl/ffmpeg",
-          ]
-        : [
-            "node_modules/@remotion/compositor-win32-x64-msvc/ffmpeg.exe",
-          ];
-
-  for (const rel of candidates) {
-    const abs = path.join(process.cwd(), rel);
-    if (fs.existsSync(abs)) return abs;
+  try {
+    const req = createRequire(import.meta.url);
+    const ffmpegStatic = req("ffmpeg-static") as string | null;
+    if (ffmpegStatic && fs.existsSync(ffmpegStatic)) return ffmpegStatic;
+  } catch {
+    // Optional dependency. Users can also set FFMPEG_PATH.
   }
+
   return null;
 }
 
@@ -196,7 +184,7 @@ async function encodeSlidesToMp4(opts: {
   const ffmpeg = bundledFfmpegPath();
   if (!ffmpeg) {
     throw new Error(
-      "No ffmpeg binary found. Install ffmpeg or set FFMPEG_PATH. The HTML renderer can preview PNG frames, but MP4 export needs an encoder."
+      "No ffmpeg binary found. Install ffmpeg-static, install ffmpeg system-wide, or set FFMPEG_PATH. The HTML renderer can capture frames, but MP4 export needs an encoder."
     );
   }
 

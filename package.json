@@ -7,21 +7,13 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "studio": "remotion studio remotion/index.ts",
-    "still": "remotion still remotion/index.ts",
-    "render": "remotion render remotion/index.ts",
     "playwright:install": "playwright install chromium"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@remotion/bundler": "^4.0.448",
-    "@remotion/google-fonts": "^4.0.448",
-    "@remotion/noise": "^4.0.448",
-    "@remotion/player": "^4.0.448",
-    "@remotion/renderer": "^4.0.448",
-    "@remotion/transitions": "^4.0.448",
+    "ffmpeg-static": "^5.3.0",
     "framer-motion": "^12.38.0",
     "immer": "^11.1.4",
     "jszip": "^3.10.1",
@@ -36,14 +28,12 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
-    "@remotion/cli": "^4.0.448",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
-    "remotion": "^4.0.448",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

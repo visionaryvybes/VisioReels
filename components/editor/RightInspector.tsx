@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useEditorStore, REEL_ASPECTS, REEL_PACE, MOTION_FEEL } from '@/stores/editor-store';
 import { COMPOSITION_CONFIGS } from '@/lib/composition-configs';
 
@@ -33,11 +33,14 @@ export function RightInspector() {
   const [renderState, setRenderState] = useState<RenderState>('idle');
   const [renderProgress, setRenderProgress] = useState<RenderProgress>({ progress: 0, frame: 0, total: 0 });
   const [renderError, setRenderError] = useState<string | null>(null);
-  const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
 
   const config = activeComposition
     ? compositionConfig ?? COMPOSITION_CONFIGS[activeComposition]
     : null;
+  const videoPath =
+    typeof compositionInputProps?.videoPath === 'string'
+      ? compositionInputProps.videoPath
+      : null;
 
   // Fall back to the user's chosen canvas when no composition has rendered yet
   // — so the inspector still gives a live read of "what we'll render".
@@ -50,69 +53,15 @@ export function RightInspector() {
   const handleRender = async () => {
     if (!activeComposition || renderState === 'rendering') return;
 
-    setRenderState('rendering');
-    setRenderError(null);
-    setRenderProgress({ progress: 0, frame: 0, total: 0 });
-
-    try {
-      const payload: {
-        composition: string;
-        inputProps?: Record<string, unknown>;
-      } = { composition: activeComposition };
-
-      if (compositionInputProps) {
-        payload.inputProps = compositionInputProps;
-      }
-
-      const res = await fetch('/api/render-video', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-
-      const reader = res.body.getReader();
-      readerRef.current = reader;
-      const dec = new TextDecoder();
-      let buf = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const parts = buf.split('\n\n');
-        buf = parts.pop() ?? '';
-
-        for (const part of parts) {
-          const line = part.replace(/^data: /, '').trim();
-          if (!line) continue;
-          try {
-            const ev = JSON.parse(line) as Record<string, unknown>;
-            switch (ev.type) {
-              case 'bundling':
-                setRenderProgress({ progress: Math.round(((ev.progress as number) ?? 0) * 0.25), frame: 0, total: 0 });
-                break;
-              case 'encoding':
-              case 'progress':
-                setRenderProgress({ progress: (ev.progress as number) ?? 0, frame: (ev.frame as number) ?? 0, total: (ev.total as number) ?? 0 });
-                break;
-              case 'done':
-                setRenderState('done');
-                setRenderProgress({ progress: 100, frame: 0, total: 0 });
-                break;
-              case 'error':
-                throw new Error(ev.output as string);
-            }
-          } catch {
-            // ignore
-          }
-        }
-      }
-    } catch (e: unknown) {
+    if (!videoPath) {
       setRenderState('error');
-      setRenderError(e instanceof Error ? e.message : 'Render failed');
+      setRenderError('No encoded MP4 yet. Generate a HyperFrames video first.');
+      return;
     }
+
+    setRenderError(null);
+    setRenderState('done');
+    setRenderProgress({ progress: 100, frame: displayLen ?? 0, total: displayLen ?? 0 });
   };
 
   return (
@@ -177,7 +126,7 @@ export function RightInspector() {
             <div style={{ marginTop: 4, color: '#666', fontSize: 10, lineHeight: 1.45 }}>
               {REEL_PACE[pace].blurb}
               <br />
-              {MOTION_FEEL[motionFeel].remotionHint.slice(0, 72)}…
+              {MOTION_FEEL[motionFeel].motionHint.slice(0, 72)}…
             </div>
           )}
         </div>
@@ -206,7 +155,7 @@ export function RightInspector() {
             cursor: !activeComposition || renderState === 'rendering' ? 'not-allowed' : 'pointer',
           }}
         >
-          {renderState === 'rendering' ? 'RENDERING...' : 'START RENDER'}
+          {renderState === 'rendering' ? 'RENDERING...' : videoPath ? 'MP4 READY' : 'GENERATE VIDEO FIRST'}
         </button>
 
         {renderState === 'rendering' && (
@@ -223,7 +172,9 @@ export function RightInspector() {
 
         {renderState === 'done' && activeComposition && (
           <a
-            href={`/api/download?comp=${encodeURIComponent(activeComposition)}`}
+            href={
+              `/api/download?path=${encodeURIComponent(videoPath ?? '')}`
+            }
             download={`${activeComposition}.mp4`}
             className="btn-primary"
             style={{

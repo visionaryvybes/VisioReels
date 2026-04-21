@@ -1,18 +1,7 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { useCallback, useMemo, useState, type ComponentType } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
-import {
-  HtmlSlideVideo,
-  computeHtmlSlideVideoDuration,
-  type HtmlSlideVideoProps,
-} from "@/remotion/compositions/HtmlSlideVideo";
-
-const RemotionPlayer = dynamic(
-  () => import("@remotion/player").then((m) => ({ default: m.Player })),
-  { ssr: false }
-);
 
 const SLIDE_DELIM = "\n---SLIDE---\n";
 
@@ -26,8 +15,13 @@ function splitSlides(raw: string): string[] {
 type RenderResponse = {
   jobId: string;
   paths: string[];
-  compositionId: string;
-  inputProps: HtmlSlideVideoProps;
+  videoPath: string;
+  inputProps: {
+    videoPath: string;
+    width: number;
+    height: number;
+    sceneLengthInFrames?: number;
+  };
 };
 
 export default function HtmlSlidesPage() {
@@ -41,15 +35,6 @@ export default function HtmlSlidesPage() {
   const [result, setResult] = useState<RenderResponse | null>(null);
 
   const inputProps = result?.inputProps ?? null;
-
-  const durationInFrames = useMemo(() => {
-    if (!inputProps?.slidePaths?.length) return 30;
-    return computeHtmlSlideVideoDuration(
-      inputProps.slidePaths.length,
-      inputProps.sceneLengthInFrames ?? 90,
-      inputProps.transitionLengthInFrames ?? 12
-    );
-  }, [inputProps]);
 
   const onRender = useCallback(async () => {
     const slides = splitSlides(raw);
@@ -69,7 +54,7 @@ export default function HtmlSlidesPage() {
       if (!res.ok) {
         throw new Error(data.error || res.statusText);
       }
-      if (!data.paths?.length || !data.inputProps) {
+      if (!data.paths?.length || !data.inputProps?.videoPath) {
         throw new Error("Invalid response from server");
       }
       setResult(data as RenderResponse);
@@ -114,16 +99,16 @@ export default function HtmlSlidesPage() {
             style={{
               fontFamily: "var(--font-syne), system-ui, sans-serif",
               fontSize: 18,
-              fontWeight: 700,
-              margin: 0,
-              letterSpacing: "-0.02em",
-            }}
-          >
-            HTML → PNG → Remotion
+            fontWeight: 700,
+            margin: 0,
+            letterSpacing: "-0.02em",
+          }}
+        >
+            HTML → MP4
           </h1>
         </div>
         <span style={{ fontSize: 13, color: "#666" }}>
-          Playwright capture · stitch in <code style={{ color: "#999" }}>HtmlSlideVideo</code>
+          Playwright capture · ffmpeg encode · native video preview
         </span>
       </header>
 
@@ -221,7 +206,7 @@ export default function HtmlSlidesPage() {
                 fontFamily: "var(--font-syne), sans-serif",
               }}
             >
-              {busy ? "Rendering…" : "Render slides to PNG"}
+              {busy ? "Rendering…" : "Render HTML to MP4"}
             </button>
           </div>
           {error ? (
@@ -232,13 +217,13 @@ export default function HtmlSlidesPage() {
           {result ? (
             <p style={{ margin: 0, fontSize: 12, color: "#6a6" }}>
               Job <code style={{ color: "#9d9" }}>{result.jobId}</code> ·{" "}
-              {result.paths.length} PNG(s) under <code>public/html-renders/</code>
+              {result.paths.length} frame(s) · <code>{result.videoPath}</code>
             </p>
           ) : null}
         </section>
 
         <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <label style={{ fontSize: 12, color: "#777" }}>Remotion preview</label>
+          <label style={{ fontSize: 12, color: "#777" }}>MP4 preview</label>
           <div
             style={{
               borderRadius: 12,
@@ -249,19 +234,12 @@ export default function HtmlSlidesPage() {
               maxHeight: "min(70vh, 640px)",
             }}
           >
-            {inputProps?.slidePaths?.length ? (
-              <RemotionPlayer
-                component={
-                  HtmlSlideVideo as unknown as ComponentType<Record<string, unknown>>
-                }
-                durationInFrames={durationInFrames}
-                compositionWidth={cw}
-                compositionHeight={ch}
-                fps={30}
-                acknowledgeRemotionLicense
+            {inputProps?.videoPath ? (
+              <video
+                src={`/${inputProps.videoPath}`}
                 controls
-                style={{ width: "100%", height: "100%" }}
-                inputProps={inputProps}
+                playsInline
+                style={{ width: "100%", height: "100%", display: "block", background: "#000" }}
               />
             ) : (
               <div
@@ -275,16 +253,19 @@ export default function HtmlSlidesPage() {
                   fontSize: 14,
                 }}
               >
-                Render to load the Player
+                Render to load the MP4
               </div>
             )}
           </div>
-          <p style={{ margin: 0, fontSize: 12, color: "#666", lineHeight: 1.5 }}>
-            Export MP4 locally with the Remotion CLI: use composition id <code style={{ color: "#999" }}>HtmlSlideVideo</code>{" "}
-            and pass <code style={{ color: "#999" }}>--props</code> as the same JSON as{" "}
-            <code style={{ color: "#999" }}>inputProps</code> from the API (see{" "}
-            <code style={{ color: "#999" }}>/api/render-video</code> for streamed progress).
-          </p>
+          {inputProps?.videoPath ? (
+            <a
+              href={`/api/download?path=${encodeURIComponent(inputProps.videoPath)}`}
+              download="html-video.mp4"
+              style={{ color: "#ccff00", fontSize: 12, textDecoration: "none" }}
+            >
+              Download MP4
+            </a>
+          ) : null}
         </section>
       </div>
     </main>

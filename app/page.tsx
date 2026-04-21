@@ -431,7 +431,7 @@ function Features() {
         <FeatureCard
           tag="Plus video"
           title="Carousels and cinematic reels"
-          body="Same engine powers a Remotion video editor. Write a brief, get a rendered MP4 with timeline, captions and transitions."
+          body="Same engine powers a local HTML video editor. Write a brief, get a rendered MP4 with timeline, captions and transitions."
           accent="#22d3a0"
           demo={<VideoDemo />}
         />
@@ -1032,7 +1032,7 @@ function Footer() {
         <div>© {new Date().getFullYear()} VisioReels · local-first studio</div>
         <div style={{ display: 'flex', gap: 20 }}>
           <span>Gemma 4</span>
-          <span>Remotion</span>
+          <span>HyperFrames</span>
           <span>Next.js</span>
           <span style={{ color: '#ccff00' }}>●</span>
           <span>online</span>

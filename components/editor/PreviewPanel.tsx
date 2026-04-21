@@ -1,17 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import dynamic from 'next/dynamic';
 import { useEditorStore } from '@/stores/editor-store';
 import { useTimelineStore } from '@/stores/timeline-store';
-import { loadCompositionComponent, COMPOSITION_CONFIGS } from '@/lib/composition-configs';
-import type { ComponentType } from 'react';
-import type { PlayerRef } from '@remotion/player';
-
-const RemotionPlayer = dynamic(
-  () => import('@remotion/player').then((m) => ({ default: m.Player })),
-  { ssr: false }
-);
+import { COMPOSITION_CONFIGS } from '@/lib/composition-configs';
 
 function requestFullscreen(el: HTMLElement) {
   const anyEl = el as HTMLElement & {
@@ -126,7 +118,7 @@ function EmptyState() {
         </h2>
 
         <p style={{ fontFamily: 'var(--font-dm-sans)', fontSize: 13, color: '#888', lineHeight: 1.55, margin: 0, maxWidth: 400 }}>
-          Write a brief in the left panel. Gemma composes the scenes, Remotion renders the MP4. Everything runs on your GPU.
+          Write a brief in the left panel. Gemma plans the story, HyperFrames renders the MP4 locally.
         </p>
 
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', marginTop: 4 }}>
@@ -162,10 +154,10 @@ function LoadingState() {
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16 }}>
       <div style={{ padding: 16, border: '1px solid #ccff00', background: '#000', color: '#ccff00', fontFamily: 'var(--font-dm-mono), monospace', fontSize: 11, letterSpacing: '0.1em', display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ccff00', boxShadow: '0 0 8px #ccff00', animation: 'lp-pulse-dot 1s ease-in-out infinite', flexShrink: 0 }} />
-        COMPILING COMPOSITION...
+        PREPARING VIDEO...
       </div>
       <div style={{ fontFamily: 'var(--font-dm-mono), monospace', fontSize: 9, color: '#444', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
-        Turbopack is picking up the new file
+        HTML frames are being captured and encoded
       </div>
     </div>
   );
@@ -178,16 +170,22 @@ export function PreviewPanel() {
     compositionInputProps,
     generationPhase,
     setPreviewFrame,
-    previewFrame,
   } = useEditorStore();
 
   const { currentFrame, setCurrentFrame, isPlaying, setPlaying } = useTimelineStore();
 
-  const [CompComponent, setCompComponent] = useState<ComponentType | null>(null);
-  const [loadingComp, setLoadingComp] = useState(false);
-  const playerRef = useRef<PlayerRef>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const fullViewRef = useRef<HTMLDivElement>(null);
   const [isFullView, setIsFullView] = useState(false);
+  const videoPath =
+    typeof compositionInputProps?.videoPath === 'string'
+      ? compositionInputProps.videoPath
+      : null;
+  const isHtmlVideo = activeComposition === 'HtmlVideo' && videoPath;
+  const loadingComp = Boolean(activeComposition && !isHtmlVideo);
+  const config = activeComposition
+    ? compositionConfig ?? COMPOSITION_CONFIGS[activeComposition]
+    : null;
 
   useEffect(() => {
     const onFs = () => setIsFullView(!!document.fullscreenElement);
@@ -206,52 +204,33 @@ export function PreviewPanel() {
   };
 
   useEffect(() => {
-    if (!activeComposition) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCompComponent(null);
+    const video = videoRef.current;
+    if (!video || !config) return;
+
+    const onTimeUpdate = () => {
+      const frame = Math.min(
+        config.durationInFrames - 1,
+        Math.max(0, Math.round(video.currentTime * config.fps))
+      );
+      setCurrentFrame(frame);
+      setPreviewFrame(frame);
+    };
+
+    video.addEventListener('timeupdate', onTimeUpdate);
+    return () => {
+      video.removeEventListener('timeupdate', onTimeUpdate);
+    };
+  }, [config, setCurrentFrame, setPreviewFrame]);
+
+  useEffect(() => {
+    if (isHtmlVideo) {
+      const video = videoRef.current;
+      if (!video) return;
+      if (isPlaying) void video.play().catch(() => {});
+      else video.pause();
       return;
     }
-    setLoadingComp(true);
-    setCompComponent(null);
-
-    loadCompositionComponent(activeComposition)
-      .then((comp) => {
-        setCompComponent(() => comp);
-      })
-      .catch(() => {
-        setCompComponent(null);
-      })
-      .finally(() => setLoadingComp(false));
-  }, [activeComposition]);
-
-  useEffect(() => {
-    const player = playerRef.current;
-    if (!player || !CompComponent) return;
-
-    const onFrameUpdate = (e: { detail: { frame: number } }) => {
-      setCurrentFrame(e.detail.frame);
-      setPreviewFrame(e.detail.frame);
-    };
-
-    player.addEventListener('frameupdate', onFrameUpdate);
-    return () => {
-      player.removeEventListener('frameupdate', onFrameUpdate);
-    };
-  }, [CompComponent, setCurrentFrame, setPreviewFrame]);
-
-  useEffect(() => {
-    const player = playerRef.current;
-    if (!player) return;
-    if (isPlaying) {
-      player.play();
-    } else {
-      player.pause();
-    }
-  }, [isPlaying]);
-
-  const config = activeComposition
-    ? compositionConfig ?? COMPOSITION_CONFIGS[activeComposition]
-    : null;
+  }, [isPlaying, isHtmlVideo]);
 
   const isGenerating =
     generationPhase === 'generating' ||
@@ -262,12 +241,6 @@ export function PreviewPanel() {
   const aspectW = config?.width ?? 1080;
   const aspectH = config?.height ?? 1920;
   const isPortrait = aspectH >= aspectW;
-  const videoPath =
-    typeof compositionInputProps?.videoPath === 'string'
-      ? compositionInputProps.videoPath
-      : null;
-  const isHtmlVideo = activeComposition === 'HtmlVideo' && videoPath;
-
   return (
     <div
       style={{
@@ -294,7 +267,7 @@ export function PreviewPanel() {
         <EmptyState />
       ) : loadingComp && !isHtmlVideo ? (
         <LoadingState />
-      ) : (isHtmlVideo || CompComponent) && config ? (
+      ) : isHtmlVideo && config ? (
         <div
           ref={fullViewRef}
           style={{
@@ -326,47 +299,15 @@ export function PreviewPanel() {
                 overflow: 'hidden',
               }}
             >
-              {isHtmlVideo ? (
-                <video
-                  key={videoPath}
-                  src={`/${videoPath}`}
-                  controls={false}
-                  playsInline
-                  loop
-                  style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }}
-                  ref={(el) => {
-                    if (!el) return;
-                    if (isPlaying) void el.play().catch(() => {});
-                    else el.pause();
-                  }}
-                />
-              ) : (
-                <RemotionPlayer
-                  ref={playerRef}
-                  key={
-                    activeComposition === 'HtmlSlideVideo'
-                      ? JSON.stringify(
-                          (compositionInputProps?.slidePaths as string[] | undefined) ?? []
-                        )
-                      : activeComposition
-                  }
-                  component={CompComponent as React.ComponentType<Record<string, unknown>>}
-                  durationInFrames={config.durationInFrames}
-                  fps={config.fps}
-                  compositionWidth={config.width}
-                  compositionHeight={config.height}
-                  style={{ width: '100%', height: '100%' }}
-                  acknowledgeRemotionLicense
-                  controls={false}
-                  initialFrame={previewFrame}
-                  {...(activeComposition === 'HtmlSlideVideo'
-                    ? {
-                        inputProps:
-                          compositionInputProps ?? { slidePaths: [] as string[] },
-                      }
-                    : {})}
-                />
-              )}
+              <video
+                key={videoPath}
+                ref={videoRef}
+                src={`/${videoPath}`}
+                controls={false}
+                playsInline
+                loop
+                style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }}
+              />
               {/* Captures clicks so full view works even when the canvas swallows events (controls=false). */}
               <div
                 role="button"
@@ -438,7 +379,11 @@ export function PreviewPanel() {
           <div style={{ display: 'flex', alignItems: 'center', background: '#000', border: '1px solid #333', padding: '8px 16px', gap: 16, flexWrap: 'wrap', justifyContent: 'center', maxWidth: '100%' }}>
             <button
               type="button"
-              onClick={() => { setCurrentFrame(0); playerRef.current?.seekTo(0); }}
+              onClick={() => {
+                setCurrentFrame(0);
+                setPreviewFrame(0);
+                if (videoRef.current) videoRef.current.currentTime = 0;
+              }}
               style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontFamily: 'var(--font-dm-mono), monospace', fontSize: 10, letterSpacing: '0.05em', transition: 'none' }}
               onMouseEnter={e => e.currentTarget.style.color = '#fff'} onMouseLeave={e => e.currentTarget.style.color = '#888'}
             >
@@ -450,8 +395,10 @@ export function PreviewPanel() {
               onClick={() => {
                 const newPlaying = !isPlaying;
                 setPlaying(newPlaying);
-                if (newPlaying) playerRef.current?.play();
-                else playerRef.current?.pause();
+                if (isHtmlVideo) {
+                  if (newPlaying) void videoRef.current?.play().catch(() => {});
+                  else videoRef.current?.pause();
+                }
               }}
               style={{
                 background: isPlaying ? '#ccff00' : 'transparent', border: `1px solid ${isPlaying ? '#ccff00' : '#888'}`, color: isPlaying ? '#000' : '#fff',
@@ -501,7 +448,7 @@ export function PreviewPanel() {
                 const f = parseInt(e.target.value);
                 setCurrentFrame(f);
                 setPreviewFrame(f);
-                playerRef.current?.seekTo(f);
+                if (videoRef.current) videoRef.current.currentTime = f / config.fps;
               }}
               style={{ width: 'min(240px, 60vw)', accentColor: '#ccff00', cursor: 'pointer', height: 2, background: '#333', appearance: 'none' }}
             />

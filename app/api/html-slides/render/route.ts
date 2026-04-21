@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
-import { renderHtmlSlidesToPng } from "@/lib/html-slide-render";
+import { renderHtmlSlidesToVideo } from "@/lib/html-slide-render";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -33,23 +33,24 @@ export async function POST(req: NextRequest) {
   const publicDir = path.join(process.cwd(), "public");
 
   try {
-    const result = await renderHtmlSlidesToPng({
+    const result = await renderHtmlSlidesToVideo({
       slides: slides as string[],
       width,
       height,
       publicDir,
+      fps: 30,
+      sceneLengthInFrames: 90,
     });
 
     return NextResponse.json({
       jobId: result.jobId,
       paths: result.paths,
-      compositionId: "HtmlSlideVideo",
+      videoPath: result.videoPath,
       inputProps: {
-        slidePaths: result.paths,
+        videoPath: result.videoPath,
         width,
         height,
         sceneLengthInFrames: 90,
-        transitionLengthInFrames: 12,
       },
     });
   } catch (e) {

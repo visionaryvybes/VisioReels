@@ -109,7 +109,7 @@ export function Topbar() {
           </Link>
           <Link
             href="/html-slides"
-            title="Render HTML/CSS slides to PNG, then stitch in Remotion (HyperFrames-style pipeline)"
+            title="Render HTML/CSS slides to MP4 with the HyperFrames-style local pipeline"
             style={{
               padding: '4px 10px',
               fontFamily: 'var(--font-dm-mono), monospace',

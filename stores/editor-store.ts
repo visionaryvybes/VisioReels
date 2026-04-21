@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { persist } from 'zustand/middleware';
-import type { ReelDecorId, ReelTypographyId } from '@/lib/reel-typography';
 import type { ConceptBrief } from '@/lib/concept-brief';
 import type { DirectorBrief } from '@/lib/director-brief';
 import type { PresetVoiceGroup } from '@/lib/voicebox';
@@ -34,7 +33,7 @@ export const REEL_ASPECTS: Record<ReelAspect, { label: string; w: number; h: num
 /** Pace → scene length + transition length (frames at 30fps). */
 export const REEL_PACE: Record<ReelPace, { sceneLen: number; transLen: number; blurb: string }> = {
   chill:    { sceneLen: 110, transLen: 24, blurb: '3.7s holds · slow cross-fade' },
-  balanced: { sceneLen: 75,  transLen: 18, blurb: '2.5s · the default CinematicReel rhythm' },
+  balanced: { sceneLen: 75,  transLen: 18, blurb: '2.5s · balanced HTML scene rhythm' },
   fast:     { sceneLen: 55,  transLen: 12, blurb: '1.8s · punchy TikTok-ready cuts' },
   hype:     { sceneLen: 38,  transLen: 8,  blurb: '1.2s · beat-driven reel energy' },
 };
@@ -47,8 +46,8 @@ export type MotionFeel = 'smooth' | 'snappy' | 'bouncy' | 'dramatic' | 'dreamy';
 export type CaptionTone = 'hype' | 'corporate' | 'tutorial' | 'storytelling' | 'social';
 export type TransitionEnergy = 'calm' | 'medium' | 'high';
 
-/** How /api/agent turns your brief into a video. The active product path is HyperFrames/HTML-first. */
-export type VideoPipelineMode = 'remotion' | 'hyperframes';
+/** How /api/agent turns your brief into a video. The product path is HyperFrames/HTML-first. */
+export type VideoPipelineMode = 'hyperframes';
 
 export const MOTION_FEEL: Record<MotionFeel, { label: string; motionHint: string }> = {
   smooth:   { label: 'Smooth', motionHint: 'long ease-out deceleration, gentle GSAP-style timing' },
@@ -141,11 +140,7 @@ interface EditorStore {
   transitionEnergy: TransitionEnergy;
   /** Target video length in seconds (drives frame count + Gemma prompt depth). */
   targetDurationSec: number;
-  /** Legacy reel typography kept for old generated Remotion compositions. Not used by active HTML path. */
-  reelTypography: ReelTypographyId;
-  /** Legacy reel overlay kept for old generated Remotion compositions. Not used by active HTML path. */
-  reelDecor: ReelDecorId;
-  /** Active path: AI → HTML/CSS/JS slides → Playwright PNG → temporary stitch/export adapter. */
+  /** Active path: AI → HTML/CSS/JS slides → Playwright PNG frames → ffmpeg MP4. */
   pipelineMode: VideoPipelineMode;
   /** Gemma's creative director brief — populated by brain pass before code gen. */
   concept: ConceptBrief | null;
@@ -190,8 +185,6 @@ interface EditorStore {
   setCaptionTone: (c: CaptionTone) => void;
   setTransitionEnergy: (t: TransitionEnergy) => void;
   setTargetDurationSec: (sec: number) => void;
-  setReelTypography: (t: ReelTypographyId) => void;
-  setReelDecor: (d: ReelDecorId) => void;
   setPipelineMode: (m: VideoPipelineMode) => void;
   setConcept: (c: ConceptBrief | null) => void;
   setDirectorBrief: (b: DirectorBrief | null) => void;
@@ -227,8 +220,6 @@ const initialState = {
   captionTone: 'hype' as CaptionTone,
   transitionEnergy: 'medium' as TransitionEnergy,
   targetDurationSec: 30,
-  reelTypography: 'syne' as ReelTypographyId,
-  reelDecor: 'minimal' as ReelDecorId,
   pipelineMode: 'hyperframes' as VideoPipelineMode,
   directorBrief: null as DirectorBrief | null,
   concept: null as ConceptBrief | null,
@@ -372,16 +363,6 @@ export const useEditorStore = create<EditorStore>()(
           state.targetDurationSec = Math.max(5, Math.min(600, Math.round(sec)));
         }),
 
-      setReelTypography: (t) =>
-        set((state) => {
-          state.reelTypography = t;
-        }),
-
-      setReelDecor: (d) =>
-        set((state) => {
-          state.reelDecor = d;
-        }),
-
       setPipelineMode: (m) =>
         set((state) => {
           state.pipelineMode = m;
@@ -451,7 +432,7 @@ export const useEditorStore = create<EditorStore>()(
         activePanel: state.activePanel,
         activeComposition: state.activeComposition,
         compositionConfig: state.compositionConfig,
-        /** Required for HtmlSlideVideo preview after refresh — was omitted, causing empty slidePaths. */
+        /** Required for HtmlVideo preview after refresh. */
         compositionInputProps: state.compositionInputProps,
         attachments: state.attachments,
         aspect: state.aspect,
@@ -462,8 +443,6 @@ export const useEditorStore = create<EditorStore>()(
         captionTone: state.captionTone,
         transitionEnergy: state.transitionEnergy,
         targetDurationSec: state.targetDurationSec,
-        reelTypography: state.reelTypography,
-        reelDecor: state.reelDecor,
         pipelineMode: state.pipelineMode,
         useTTS: state.useTTS,
         ttsVoice: state.ttsVoice,

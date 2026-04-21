@@ -16,11 +16,11 @@ const fontVariables = {
 export const metadata: Metadata = {
   title: "VisioReels — Local AI Video Studio",
   description:
-    "Create cinematic social media videos with Gemma 4 + Remotion. Fully local, zero API cost. TikTok, Reels, Shorts, Pinterest, X.",
+    "Create cinematic social media videos with Gemma 4 + HyperFrames-style HTML rendering. Fully local, zero API cost. TikTok, Reels, Shorts, Pinterest, X.",
   keywords: [
     "AI video studio",
     "local AI video",
-    "Remotion",
+    "HyperFrames",
     "Gemma 4",
     "social media reels",
     "CapCut alternative",
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   ],
   openGraph: {
     title: "VisioReels — Local AI Video Studio",
-    description: "Gemma 4 writes the code. Remotion renders the video. Zero cloud cost.",
+    description: "Gemma 4 plans the story. HTML renders the video locally. Zero cloud cost.",
     type: "website",
   },
 };

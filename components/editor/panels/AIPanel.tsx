@@ -22,7 +22,6 @@ import {
 } from '@/stores/editor-store';
 import { useProjectStore } from '@/stores/project-store';
 import { useTimelineStore } from '@/stores/timeline-store';
-import { COMPOSITION_CONFIGS } from '@/lib/composition-configs';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ── Voice picker constants ──────────────────────────────────────────────────
@@ -124,7 +123,6 @@ export function AIPanel() {
     motionFeel, setMotionFeel, captionTone, setCaptionTone,
     transitionEnergy, setTransitionEnergy,
     targetDurationSec, setTargetDurationSec,
-    pipelineMode,
     concept, setConcept,
     directorBrief, setDirectorBrief,
     useTTS, setUseTTS, ttsVoice, setTTSVoice,
@@ -304,12 +302,7 @@ export function AIPanel() {
                 break;
               }
               case 'file_written': {
-                setCompositionInputProps(null);
-                const compId = (ev.path as string).replace(/^remotion\/compositions\//, '').replace(/\.tsx$/, '');
-                const config = COMPOSITION_CONFIGS[compId] ?? COMPOSITION_CONFIGS['Reel'];
-                setActiveComposition(compId, config);
-                setComposition(compId, prompt, `out/preview-${compId}.png`);
-                addClip({ composition: compId, durationInFrames: config.durationInFrames, fps: config.fps, label: compId });
+                setGenerationPhase('generating', 'Ignoring legacy composition event; waiting for HTML MP4 output…');
                 break;
               }
               case 'html_slide_video':
@@ -319,7 +312,7 @@ export function AIPanel() {
                 const d = typeof ev.durationInFrames === 'number' ? ev.durationInFrames : 300;
                 const inputProps = ev.inputProps as Record<string, unknown>;
                 setCompositionInputProps(inputProps);
-                const compId = ev.type === 'html_video' ? 'HtmlVideo' : 'HtmlSlideVideo';
+                const compId = 'HtmlVideo';
                 setActiveComposition(compId, {
                   durationInFrames: d,
                   fps: 30,
@@ -336,29 +329,11 @@ export function AIPanel() {
                 break;
               }
               case 'reel_spec': {
-                setCompositionInputProps(null);
-                const w = typeof ev.width === 'number' ? ev.width : REEL_ASPECTS[aspect].w;
-                const h = typeof ev.height === 'number' ? ev.height : REEL_ASPECTS[aspect].h;
-                const d = typeof ev.durationInFrames === 'number' && ev.durationInFrames > 0 ? ev.durationInFrames : 300;
-                const compId = typeof ev.componentName === 'string' && ev.componentName ? ev.componentName : 'Reel';
-                setActiveComposition(compId, { durationInFrames: d, fps: 30, width: w, height: h });
-                setComposition(compId, prompt, `out/preview-${compId}.png`);
-                // addClip is also called reactively by Timeline's useEffect on activeComposition change.
-                // Belt-and-suspenders: call it here too so clips are immediately visible.
-                addClip({ composition: compId, durationInFrames: d, fps: 30, label: compId });
+                setGenerationPhase('generating', 'Ignoring legacy reel event; waiting for HTML MP4 output…');
                 break;
               }
               case 'composition_meta': {
-                setCompositionInputProps(null);
-                const w = typeof ev.width === 'number' ? ev.width : REEL_ASPECTS[aspect].w;
-                const h = typeof ev.height === 'number' ? ev.height : REEL_ASPECTS[aspect].h;
-                const d = typeof ev.durationInFrames === 'number' ? ev.durationInFrames : 300;
-                setActiveComposition(ev.componentName as string, {
-                  durationInFrames: d,
-                  fps: 30,
-                  width: w,
-                  height: h,
-                });
+                setGenerationPhase('generating', 'Ignoring legacy composition metadata; waiting for HTML MP4 output…');
                 break;
               }
               case 'validation': setGenerationPhase('validating', ev.success ? 'Validating code...' : 'Validation error found'); break;
@@ -384,7 +359,7 @@ export function AIPanel() {
       setError(msg);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prompt, isGenerating, selectedChips, attachments, aspect, pace, maxScenes, useVision, motionFeel, captionTone, transitionEnergy, targetDurationSec, pipelineMode, useTTS, ttsVoice, setCompositionInputProps, setConcept, setDirectorBrief]);
+  }, [prompt, isGenerating, selectedChips, attachments, aspect, pace, maxScenes, useVision, motionFeel, captionTone, transitionEnergy, targetDurationSec, useTTS, ttsVoice, setCompositionInputProps, setConcept, setDirectorBrief]);
 
   useEffect(() => () => stopTimer(), []);
 
@@ -412,7 +387,7 @@ export function AIPanel() {
             ACTIVE
           </span>
           <span style={{ display: 'block', marginTop: 8, color: '#91a65a', fontSize: 9, fontWeight: 400, lineHeight: 1.45, letterSpacing: '0.03em' }}>
-            Gemma writes HTML/CSS/JS compositions. Playwright captures DOM frames. The old Remotion reel path is now legacy-only.
+            Gemma writes HTML/CSS/JS compositions. Playwright captures DOM frames. ffmpeg encodes the MP4.
           </span>
         </div>
       </Section>

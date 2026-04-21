@@ -314,9 +314,9 @@ function freeformNumPredict(targetSec: number): number {
 
 /** HTML slide Gemma output scales with slide count; vision adds context — cap for efficiency. */
 function htmlSlideNumPredict(slideCap: number, hasImages: boolean): number {
-  const base = hasImages ? 3800 : 3000;
-  const per = hasImages ? 2000 : 2400;
-  return Math.min(16384, base + Math.max(1, slideCap) * per);
+  const base = hasImages ? 1800 : 1400;
+  const per = hasImages ? 750 : 650;
+  return Math.min(5200, base + Math.max(1, slideCap) * per);
 }
 
 // ── Vision pre-pass (mirrors /api/slides/generate) ───────────────────────────
@@ -1595,16 +1595,16 @@ ${roastHtmlRules}`;
 
   return `${HTML_SLIDES_CREATIVE_DIRECTIVES}
 
-You are a senior motion designer + art director. The user wants a video made of separate HTML slides, each rendered as a PNG (${w}×${h}px).
+You are a senior motion designer + art director. The user wants a video made of separate HTML scenes, each captured as a frame and encoded to MP4 (${w}×${h}px).
 ${slideIntent.toneGuidance ? `\n═══ CREATIVE INTENT ═══\n${slideIntent.toneGuidance}\n` : ""}
-Each slide = ONE self-contained HTML fragment (body content only — no <!DOCTYPE>). Use inline styles on a single root wrapper. CSS <style> blocks allowed (for @keyframes animations). No external JavaScript.
+Each slide = ONE self-contained HTML fragment (body content only — no <!DOCTYPE>). Use inline styles on a single root wrapper. No external JavaScript. Keep every slide under 1400 characters.
 
 ═══ TYPOGRAPHY (Google Fonts — REQUIRED on every slide with visible text) ═══
 At the **very start** of each slide’s HTML, add the Google Fonts link:
 \`<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=FontName:ital,wght@0,400;0,700;0,900;1,400&display=swap" />\`
 ${brief ? `Use "${brief.typography.headline_font}" for headlines and "${brief.typography.mono_font}" for labels/kickers — these are the director-specified fonts.` : `Pick intentional display families: Bebas Neue, Fraunces, Syne, Space Grotesk, DM Mono, JetBrains Mono.`}
 
-CSS @keyframes in a <style> tag are fully supported — use them for: fade-in, slide-up, scale-in, letter-spacing expand, opacity pulses. Animate them with animation: name 0.6s ease forwards.
+Do not write CSS keyframes. This renderer captures designed frames and encodes them to MP4; keep the HTML compact and production-readable.
 
 ═══ VISUAL LAYERS — every slide MUST have all three ═══
 1. BACKGROUND LAYER: full-bleed gradient, dark field, or image — never flat #000 alone
@@ -1672,7 +1672,7 @@ ${imgBlock}${directorHtmlBlock}
 3. Output slide 2, then ---SLIDE---, repeat.
 4. Up to ${maxSlides} slides.
 5. No markdown code fences around the whole output.
-6. Keep each slide compact but visually complete.
+6. Keep each slide compact but visually complete. Do not repeat large CSS blocks.
 
 ${briefBlock}
 
