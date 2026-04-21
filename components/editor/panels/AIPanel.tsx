@@ -23,12 +23,6 @@ import {
 import { useProjectStore } from '@/stores/project-store';
 import { useTimelineStore } from '@/stores/timeline-store';
 import { COMPOSITION_CONFIGS } from '@/lib/composition-configs';
-import {
-  REEL_TYPOGRAPHY,
-  REEL_DECOR_LABELS,
-  type ReelTypographyId,
-  type ReelDecorId,
-} from '@/lib/reel-typography';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ── Voice picker constants ──────────────────────────────────────────────────
@@ -130,9 +124,7 @@ export function AIPanel() {
     motionFeel, setMotionFeel, captionTone, setCaptionTone,
     transitionEnergy, setTransitionEnergy,
     targetDurationSec, setTargetDurationSec,
-    reelTypography, setReelTypography,
-    reelDecor, setReelDecor,
-    pipelineMode, setPipelineMode,
+    pipelineMode,
     concept, setConcept,
     directorBrief, setDirectorBrief,
     useTTS, setUseTTS, ttsVoice, setTTSVoice,
@@ -147,7 +139,7 @@ export function AIPanel() {
   const { addClip } = useTimelineStore();
 
   const [selectedChips, setSelectedChips] = useState<string[]>(['CINEMATIC', 'WARM_GRAIN']);
-  const isHyperframes = (pipelineMode ?? 'remotion') === 'hyperframes';
+  const isHyperframes = true;
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [vbRunning, setVbRunning] = useState<boolean | null>(null);
@@ -249,7 +241,7 @@ export function AIPanel() {
         body: JSON.stringify({
           userMessage: fullPrompt,
           attachments: attachments.map(a => ({ path: a.path, name: a.name })),
-          ...(isHyperframes ? { pipeline: 'hyperframes' as const } : {}),
+          pipeline: 'hyperframes' as const,
           aspect,
           pace,
           maxScenes,
@@ -258,8 +250,6 @@ export function AIPanel() {
           captionTone,
           transitionEnergy,
           durationSeconds: targetDurationSec,
-          reelTypography,
-          reelDecor,
           useTTS,
           ttsVoice: ttsVoiceId,
         }),
@@ -322,24 +312,26 @@ export function AIPanel() {
                 addClip({ composition: compId, durationInFrames: config.durationInFrames, fps: config.fps, label: compId });
                 break;
               }
-              case 'html_slide_video': {
+              case 'html_slide_video':
+              case 'html_video': {
                 const w = typeof ev.width === 'number' ? ev.width : REEL_ASPECTS[aspect].w;
                 const h = typeof ev.height === 'number' ? ev.height : REEL_ASPECTS[aspect].h;
                 const d = typeof ev.durationInFrames === 'number' ? ev.durationInFrames : 300;
                 const inputProps = ev.inputProps as Record<string, unknown>;
                 setCompositionInputProps(inputProps);
-                setActiveComposition('HtmlSlideVideo', {
+                const compId = ev.type === 'html_video' ? 'HtmlVideo' : 'HtmlSlideVideo';
+                setActiveComposition(compId, {
                   durationInFrames: d,
                   fps: 30,
                   width: w,
                   height: h,
                 });
-                setComposition('HtmlSlideVideo', prompt, 'html-slides-preview');
+                setComposition(compId, prompt, 'html-video-preview');
                 addClip({
-                  composition: 'HtmlSlideVideo',
+                  composition: compId,
                   durationInFrames: d,
                   fps: 30,
-                  label: 'HTML slides',
+                  label: 'HTML video',
                 });
                 break;
               }
@@ -392,97 +384,37 @@ export function AIPanel() {
       setError(msg);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prompt, isGenerating, selectedChips, attachments, aspect, pace, maxScenes, useVision, motionFeel, captionTone, transitionEnergy, targetDurationSec, reelTypography, reelDecor, pipelineMode, useTTS, ttsVoice, setCompositionInputProps, setConcept, setDirectorBrief]);
+  }, [prompt, isGenerating, selectedChips, attachments, aspect, pace, maxScenes, useVision, motionFeel, captionTone, transitionEnergy, targetDurationSec, pipelineMode, useTTS, ttsVoice, setCompositionInputProps, setConcept, setDirectorBrief]);
 
   useEffect(() => () => stopTimer(), []);
 
   const visionByPath = new Map(visionNotes.map((n) => [n.path, n]));
 
-  const TYPO_IDS: ReelTypographyId[] = ['syne', 'brutal', 'editorial', 'swiss', 'mono', 'fraunces', 'quiet', 'zine', 'luxe', 'signal'];
-  const DECOR_IDS: ReelDecorId[] = ['none', 'minimal', 'film'];
-
   return (
     <div className="ai-panel-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 20, padding: 'clamp(16px, 4vw, 24px)', height: '100%', overflowY: 'auto', minWidth: 0 }}>
 
       <Section label="ENGINE">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          {([
-            {
-              mode: 'remotion' as const,
-              label: 'REMOTION',
-              icon: '◈',
-              desc: 'AI designs cinematic reel → Ken Burns scenes + captions + transitions',
-              active: !isHyperframes,
-            },
-            {
-              mode: 'hyperframes' as const,
-              label: 'HYPERFRAMES',
-              icon: '◉',
-              desc: 'AI designs HTML slides → Playwright renders → Remotion stitches with transitions',
-              active: isHyperframes,
-            },
-          ] as const).map(({ mode, label, icon, desc, active }) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => setPipelineMode(mode)}
-              disabled={isGenerating}
-              aria-pressed={active}
-              style={{
-                padding: '14px 10px 12px',
-                border: `2px solid ${active ? '#ccff00' : '#222'}`,
-                background: active ? 'rgba(204,255,0,0.07)' : '#050505',
-                color: active ? '#ccff00' : '#555',
-                fontFamily: 'var(--font-dm-mono), monospace',
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: '0.08em',
-                textAlign: 'left',
-                cursor: isGenerating ? 'not-allowed' : 'pointer',
-                outline: 'none',
-                transition: 'border-color 0.12s, color 0.12s',
-                position: 'relative',
-              }}
-            >
-              <span style={{ fontSize: 14, marginRight: 6 }}>{icon}</span>
-              {label}
-              <span style={{
-                display: 'block',
-                marginTop: 6,
-                fontWeight: 400,
-                fontSize: 8,
-                color: active ? '#99bb00' : '#444',
-                textTransform: 'none',
-                letterSpacing: '0.03em',
-                lineHeight: 1.4,
-              }}>
-                {desc}
-              </span>
-              {active && (
-                <span style={{
-                  position: 'absolute',
-                  top: 6,
-                  right: 8,
-                  fontSize: 7,
-                  fontWeight: 700,
-                  color: '#ccff00',
-                  letterSpacing: '0.1em',
-                }}>
-                  ACTIVE
-                </span>
-              )}
-            </button>
-          ))}
+        <div
+          style={{
+            padding: '14px 12px',
+            border: '2px solid #ccff00',
+            background: 'linear-gradient(135deg, rgba(204,255,0,0.09), rgba(255,255,255,0.02))',
+            color: '#ccff00',
+            fontFamily: 'var(--font-dm-mono), monospace',
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '0.08em',
+            position: 'relative',
+          }}
+        >
+          ◉ HYPERFRAMES HTML
+          <span style={{ position: 'absolute', top: 8, right: 10, fontSize: 7, letterSpacing: '0.1em' }}>
+            ACTIVE
+          </span>
+          <span style={{ display: 'block', marginTop: 8, color: '#91a65a', fontSize: 9, fontWeight: 400, lineHeight: 1.45, letterSpacing: '0.03em' }}>
+            Gemma writes HTML/CSS/JS compositions. Playwright captures DOM frames. The old Remotion reel path is now legacy-only.
+          </span>
         </div>
-        {isHyperframes ? (
-          <p style={{ margin: '10px 0 0', fontSize: 10, color: '#666', lineHeight: 1.5, fontFamily: 'var(--font-dm-mono), monospace' }}>
-            Gemma writes HTML → Playwright renders each slide to PNG → Remotion stitches with transitions. Ollama + Chromium must be running.
-          </p>
-        ) : (
-          <p style={{ margin: '10px 0 0', fontSize: 10, color: '#555', lineHeight: 1.45, fontFamily: 'var(--font-dm-mono), monospace' }}>
-            Gemma reads your images + brief → generates CinematicReel JSON → Remotion renders Ken Burns scenes with captions + cinematic transitions.
-          </p>
-        )}
       </Section>
 
       {/* Target runtime — drives frame count + Gemma script depth */}
@@ -581,73 +513,7 @@ export function AIPanel() {
         </div>
       </Section>
 
-      {/* Typography — matches slide font stacks, baked into CinematicReel output */}
-      <Section label="TYPOGRAPHY" hint="headline + subtitle fonts on generated reels">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(76px, 1fr))', gap: 6 }}>
-          {TYPO_IDS.map((id) => {
-            const active = reelTypography === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                title={REEL_TYPOGRAPHY[id].captionFont}
-                onClick={() => setReelTypography(id)}
-                disabled={isGenerating}
-                style={{
-                  padding: '8px 4px',
-                  borderRadius: 6,
-                  border: `1px solid ${active ? '#ccff00' : '#333'}`,
-                  background: active ? 'rgba(204,255,0,0.1)' : 'transparent',
-                  color: active ? '#ccff00' : '#888',
-                  fontSize: 9,
-                  fontFamily: 'var(--font-dm-mono), monospace',
-                  fontWeight: 700,
-                  letterSpacing: '0.06em',
-                  cursor: isGenerating ? 'not-allowed' : 'pointer',
-                  textTransform: 'uppercase',
-                  minWidth: 0,
-                }}
-              >
-                {REEL_TYPOGRAPHY[id].label}
-              </button>
-            );
-          })}
-        </div>
-      </Section>
-
-      <Section label="OVERLAY" hint="corner icons & film strips on the render">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 6 }}>
-          {DECOR_IDS.map((id) => {
-            const active = reelDecor === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setReelDecor(id)}
-                disabled={isGenerating}
-                style={{
-                  padding: '8px 6px',
-                  borderRadius: 6,
-                  border: `1px solid ${active ? '#ccff00' : '#333'}`,
-                  background: active ? '#ccff00' : 'transparent',
-                  color: active ? '#000' : '#888',
-                  fontSize: 9,
-                  fontFamily: 'var(--font-dm-mono), monospace',
-                  fontWeight: 700,
-                  letterSpacing: '0.05em',
-                  cursor: isGenerating ? 'not-allowed' : 'pointer',
-                  textAlign: 'center',
-                  lineHeight: 1.25,
-                }}
-              >
-                {REEL_DECOR_LABELS[id]}
-              </button>
-            );
-          })}
-        </div>
-      </Section>
-
-      {/* HyperFrames-style creative vocabulary → Gemma (Remotion render) */}
+      {/* HyperFrames-style creative vocabulary → Gemma HTML renderer */}
       <Section
         label="CREATIVE"
         hint="motion · caption · cuts — inspired by HyperFrames prompt patterns"
@@ -662,7 +528,7 @@ export function AIPanel() {
                   <button
                     key={m}
                     type="button"
-                    title={MOTION_FEEL[m].remotionHint}
+                    title={MOTION_FEEL[m].motionHint}
                     onClick={() => setMotionFeel(m)}
                     disabled={isGenerating}
                     style={{
@@ -1043,7 +909,7 @@ export function AIPanel() {
           }}
         />
         <p style={{ margin: 0, padding: '0 16px 10px', fontSize: 9, color: '#555', fontFamily: 'var(--font-dm-mono), monospace', lineHeight: 1.45 }}>
-          Without media: full Remotion + SVG power (graphs, grids, typography). Attach images for the cinematic reel path. Say &quot;photo&quot; or &quot;Unsplash&quot; if you want stock imagery.
+          HTML-first: Gemma writes DOM/CSS/JS motion graphics. Attach images for visual reads; use style chips for GSAP-like movement, typography, charts, and branded layouts.
         </p>
         <div style={{ display: 'flex', borderTop: '1px solid #333', padding: '12px 16px', justifyContent: 'space-between', alignItems: 'center', background: '#050505' }}>
           <button
@@ -1140,7 +1006,7 @@ export function AIPanel() {
             lineHeight: 1.45,
           }}
         >
-          <strong style={{ color: '#ccff00' }}>HYPERFRAMES:</strong> add a brief and/or attach images. Gemma designs HTML slides, renders each to PNG, then stitches them into a video with cinematic transitions.
+          <strong style={{ color: '#ccff00' }}>HYPERFRAMES:</strong> add a brief and/or attach images. Gemma designs HTML/CSS/JS scenes, Playwright captures them, then local ffmpeg encodes MP4.
         </p>
       ) : null}
       <button
@@ -1158,7 +1024,7 @@ export function AIPanel() {
           cursor: isGenerating || !canGenerate ? 'not-allowed' : 'pointer', transition: 'none', marginTop: 8, letterSpacing: '0.05em'
         }}
       >
-        {isGenerating ? '> GENERATING...' : `> ${isHyperframes ? 'HYPERFRAMES' : attachments.length ? 'REMOTION REEL' : 'REMOTION VIDEO'}  ·  ${targetDurationSec}s  ·  ${aspect}`}
+          {isGenerating ? '> GENERATING...' : `> HYPERFRAMES HTML  ·  ${targetDurationSec}s  ·  ${aspect}`}
       </button>
 
       {/* Brain Concept Brief */}

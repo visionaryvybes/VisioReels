@@ -21,8 +21,7 @@ import {
   type HyperframesMotionFeel,
 } from "@/lib/hyperframes-prompt";
 import { findBannedPhrases, findWeakPatterns, isThinText } from "@/lib/copy-guard";
-import { renderHtmlSlidesToPng } from "@/lib/html-slide-render";
-import { computeHtmlSlideVideoDuration } from "@/lib/html-slide-duration";
+import { renderHtmlSlidesToVideo } from "@/lib/html-slide-render";
 import type { ConceptBrief } from "@/lib/concept-brief";
 import { parseDirectorBrief, briefToConceptCompat, type DirectorBrief } from "@/lib/director-brief";
 import { buildContextQueries, fetchWebContext, formatWebContext } from "@/lib/web-context";
@@ -2825,7 +2824,7 @@ export async function POST(req: NextRequest) {
   let body: {
     userMessage?: unknown;
     attachments?: unknown;
-    /** "hyperframes" = Gemma HTML → Playwright PNG → HtmlSlideVideo; "remotion" = CinematicReel. */
+    /** Active path: Gemma HTML → Playwright capture → MP4. Legacy values ignored. */
     pipeline?: unknown;
     aspect?: unknown;
     pace?: unknown;
@@ -2862,8 +2861,7 @@ export async function POST(req: NextRequest) {
   const hasAttachments = attachments.length > 0;
   const userMessage =
     typeof body.userMessage === "string" ? body.userMessage.trim() : "";
-  const pipeline =
-    body.pipeline === "hyperframes" ? "hyperframes" : "remotion";
+  const pipeline = "hyperframes";
   if (!userMessage && !hasAttachments) {
     return new Response(
       JSON.stringify({
@@ -2938,7 +2936,7 @@ export async function POST(req: NextRequest) {
       };
 
       try {
-      // ── HTML slide video (Gemma → ---SLIDE--- HTML → Playwright PNG → HtmlSlideVideo) ──
+      // ── HTML slide video (Gemma → ---SLIDE--- HTML → Playwright capture → MP4) ──
       if (pipeline === "hyperframes") {
         const { w, h, label } = ASPECTS[aspect];
         const slideCap = Math.min(
@@ -3152,13 +3150,15 @@ export async function POST(req: NextRequest) {
           text: `Rendering ${slides.length} slide(s) to PNG (Chromium)…`,
         });
         const publicDir = projectPath("public");
-        let renderResult: { jobId: string; paths: string[] };
+        let renderResult: { jobId: string; paths: string[]; videoPath: string };
         try {
-          renderResult = await renderHtmlSlidesToPng({
+          renderResult = await renderHtmlSlidesToVideo({
             slides,
             width: w,
             height: h,
             publicDir,
+            fps: 30,
+            sceneLengthInFrames: sceneLen,
           });
         } catch (e) {
           send({
@@ -3221,6 +3221,7 @@ export async function POST(req: NextRequest) {
 
         const inputProps = {
           slidePaths: renderResult.paths,
+          videoPath: renderResult.videoPath,
           width: w,
           height: h,
           sceneLengthInFrames: sceneLen,
@@ -3230,19 +3231,16 @@ export async function POST(req: NextRequest) {
           frameStyle: pickHtmlFrameStyle(userMessage),
           ...(hfNarrationPaths.some(Boolean) ? { narrationPaths: hfNarrationPaths } : {}),
         };
-        const durationInFrames = computeHtmlSlideVideoDuration(
-          slides.length,
-          sceneLen,
-          transLen
-        );
+        const durationInFrames = slides.length * sceneLen;
         send({
-          type: "html_slide_video",
-          componentName: "HtmlSlideVideo",
+          type: "html_video",
+          componentName: "HtmlVideo",
           durationInFrames,
           width: w,
           height: h,
           inputProps,
           jobId: renderResult.jobId,
+          videoPath: renderResult.videoPath,
         });
         send({ type: "validation", success: true, output: "" });
         send({ type: "done" });

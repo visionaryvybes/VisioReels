@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "node:url";
+import { spawn } from "child_process";
 import { chromium, type Browser, type LaunchOptions, type Page } from "playwright";
 
 /**
@@ -95,6 +96,11 @@ export type RenderHtmlSlidesOptions = {
   jobId?: string;
 };
 
+export type RenderHtmlSlidesVideoOptions = RenderHtmlSlidesOptions & {
+  fps?: number;
+  sceneLengthInFrames?: number;
+};
+
 /** `file://` base so `<img src="uploads/…">` resolves without a running dev server. */
 function assetBaseHref(publicDir: string): string {
   const u = pathToFileURL(path.join(publicDir, ".")).href;
@@ -147,6 +153,93 @@ export type HtmlSlideRenderResult = {
   jobId: string;
   paths: string[];
 };
+
+export type HtmlSlideVideoRenderResult = HtmlSlideRenderResult & {
+  videoPath: string;
+};
+
+function bundledFfmpegPath(): string | null {
+  const explicit = process.env.FFMPEG_PATH?.trim();
+  if (explicit && fs.existsSync(explicit)) return explicit;
+
+  const candidates =
+    process.platform === "darwin"
+      ? [
+          "node_modules/@remotion/compositor-darwin-arm64/ffmpeg",
+          "node_modules/@remotion/compositor-darwin-x64/ffmpeg",
+        ]
+      : process.platform === "linux"
+        ? [
+            "node_modules/@remotion/compositor-linux-x64-gnu/ffmpeg",
+            "node_modules/@remotion/compositor-linux-arm64-gnu/ffmpeg",
+            "node_modules/@remotion/compositor-linux-x64-musl/ffmpeg",
+            "node_modules/@remotion/compositor-linux-arm64-musl/ffmpeg",
+          ]
+        : [
+            "node_modules/@remotion/compositor-win32-x64-msvc/ffmpeg.exe",
+          ];
+
+  for (const rel of candidates) {
+    const abs = path.join(process.cwd(), rel);
+    if (fs.existsSync(abs)) return abs;
+  }
+  return null;
+}
+
+async function encodeSlidesToMp4(opts: {
+  imagePathsAbs: string[];
+  outFileAbs: string;
+  fps: number;
+  sceneLengthInFrames: number;
+  workDirAbs: string;
+}): Promise<void> {
+  const ffmpeg = bundledFfmpegPath();
+  if (!ffmpeg) {
+    throw new Error(
+      "No ffmpeg binary found. Install ffmpeg or set FFMPEG_PATH. The HTML renderer can preview PNG frames, but MP4 export needs an encoder."
+    );
+  }
+
+  const secondsPerSlide = Math.max(0.2, opts.sceneLengthInFrames / opts.fps);
+  const concatFile = path.join(opts.workDirAbs, "concat.txt");
+  const lines: string[] = [];
+  for (const img of opts.imagePathsAbs) {
+    lines.push(`file '${img.replace(/'/g, "'\\''")}'`);
+    lines.push(`duration ${secondsPerSlide.toFixed(4)}`);
+  }
+  const last = opts.imagePathsAbs.at(-1);
+  if (last) lines.push(`file '${last.replace(/'/g, "'\\''")}'`);
+  fs.writeFileSync(concatFile, lines.join("\n"), "utf-8");
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(ffmpeg, [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-i",
+      concatFile,
+      "-vf",
+      `fps=${opts.fps},format=yuv420p`,
+      "-movflags",
+      "+faststart",
+      opts.outFileAbs,
+    ]);
+    let stderr = "";
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(stderr.trim() || `ffmpeg exited with code ${code}`));
+    });
+  });
+}
 
 function wrapHtml(slideHtml: string, publicDir: string): string {
   const baseHref = assetBaseHref(publicDir);
@@ -278,4 +371,27 @@ export async function renderHtmlSlidesToPng(
       try { fs.unlinkSync(f); } catch { /* best-effort cleanup */ }
     }
   }
+}
+
+export async function renderHtmlSlidesToVideo(
+  opts: RenderHtmlSlidesVideoOptions
+): Promise<HtmlSlideVideoRenderResult> {
+  const png = await renderHtmlSlidesToPng(opts);
+  const relBase = path.join("html-renders", png.jobId);
+  const absDir = path.join(opts.publicDir, relBase);
+  const outFile = path.join(absDir, "final.mp4");
+  const imagePathsAbs = png.paths.map((p) => path.join(opts.publicDir, p));
+
+  await encodeSlidesToMp4({
+    imagePathsAbs,
+    outFileAbs: outFile,
+    fps: Math.max(1, Math.min(60, Math.round(opts.fps ?? 30))),
+    sceneLengthInFrames: Math.max(6, Math.round(opts.sceneLengthInFrames ?? 90)),
+    workDirAbs: absDir,
+  });
+
+  return {
+    ...png,
+    videoPath: path.join(relBase, "final.mp4").split(path.sep).join("/"),
+  };
 }

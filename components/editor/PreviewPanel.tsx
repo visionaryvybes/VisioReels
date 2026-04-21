@@ -262,6 +262,11 @@ export function PreviewPanel() {
   const aspectW = config?.width ?? 1080;
   const aspectH = config?.height ?? 1920;
   const isPortrait = aspectH >= aspectW;
+  const videoPath =
+    typeof compositionInputProps?.videoPath === 'string'
+      ? compositionInputProps.videoPath
+      : null;
+  const isHtmlVideo = activeComposition === 'HtmlVideo' && videoPath;
 
   return (
     <div
@@ -287,9 +292,9 @@ export function PreviewPanel() {
 
       {!activeComposition && !isGenerating ? (
         <EmptyState />
-      ) : loadingComp ? (
+      ) : loadingComp && !isHtmlVideo ? (
         <LoadingState />
-      ) : CompComponent && config ? (
+      ) : (isHtmlVideo || CompComponent) && config ? (
         <div
           ref={fullViewRef}
           style={{
@@ -321,31 +326,47 @@ export function PreviewPanel() {
                 overflow: 'hidden',
               }}
             >
-              <RemotionPlayer
-                ref={playerRef}
-                key={
-                  activeComposition === 'HtmlSlideVideo'
-                    ? JSON.stringify(
-                        (compositionInputProps?.slidePaths as string[] | undefined) ?? []
-                      )
-                    : activeComposition
-                }
-                component={CompComponent as React.ComponentType<Record<string, unknown>>}
-                durationInFrames={config.durationInFrames}
-                fps={config.fps}
-                compositionWidth={config.width}
-                compositionHeight={config.height}
-                style={{ width: '100%', height: '100%' }}
-                acknowledgeRemotionLicense
-                controls={false}
-                initialFrame={previewFrame}
-                {...(activeComposition === 'HtmlSlideVideo'
-                  ? {
-                      inputProps:
-                        compositionInputProps ?? { slidePaths: [] as string[] },
-                    }
-                  : {})}
-              />
+              {isHtmlVideo ? (
+                <video
+                  key={videoPath}
+                  src={`/${videoPath}`}
+                  controls={false}
+                  playsInline
+                  loop
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }}
+                  ref={(el) => {
+                    if (!el) return;
+                    if (isPlaying) void el.play().catch(() => {});
+                    else el.pause();
+                  }}
+                />
+              ) : (
+                <RemotionPlayer
+                  ref={playerRef}
+                  key={
+                    activeComposition === 'HtmlSlideVideo'
+                      ? JSON.stringify(
+                          (compositionInputProps?.slidePaths as string[] | undefined) ?? []
+                        )
+                      : activeComposition
+                  }
+                  component={CompComponent as React.ComponentType<Record<string, unknown>>}
+                  durationInFrames={config.durationInFrames}
+                  fps={config.fps}
+                  compositionWidth={config.width}
+                  compositionHeight={config.height}
+                  style={{ width: '100%', height: '100%' }}
+                  acknowledgeRemotionLicense
+                  controls={false}
+                  initialFrame={previewFrame}
+                  {...(activeComposition === 'HtmlSlideVideo'
+                    ? {
+                        inputProps:
+                          compositionInputProps ?? { slidePaths: [] as string[] },
+                      }
+                    : {})}
+                />
+              )}
               {/* Captures clicks so full view works even when the canvas swallows events (controls=false). */}
               <div
                 role="button"

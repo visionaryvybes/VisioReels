@@ -40,22 +40,22 @@ export const REEL_PACE: Record<ReelPace, { sceneLen: number; transLen: number; b
 };
 
 /**
- * HyperFrames-style creative vocabulary (maps to Gemma instructions — we render with Remotion).
+ * HyperFrames-style creative vocabulary for Gemma's HTML/CSS/JS composition path.
  * Shared prompt fragments: `lib/hyperframes-prompt.ts` · https://github.com/heygen-com/hyperframes
  */
 export type MotionFeel = 'smooth' | 'snappy' | 'bouncy' | 'dramatic' | 'dreamy';
 export type CaptionTone = 'hype' | 'corporate' | 'tutorial' | 'storytelling' | 'social';
 export type TransitionEnergy = 'calm' | 'medium' | 'high';
 
-/** How /api/agent turns your brief into a video (AI panel). */
+/** How /api/agent turns your brief into a video. The active product path is HyperFrames/HTML-first. */
 export type VideoPipelineMode = 'remotion' | 'hyperframes';
 
-export const MOTION_FEEL: Record<MotionFeel, { label: string; remotionHint: string }> = {
-  smooth:   { label: 'Smooth', remotionHint: 'long ease-out deceleration, gentle spring damping' },
-  snappy:   { label: 'Snappy', remotionHint: 'short duration, decisive settle' },
-  bouncy:   { label: 'Bouncy', remotionHint: 'spring with overshoot, playful' },
-  dramatic: { label: 'Dramatic', remotionHint: 'expo-style slow tail, big contrast' },
-  dreamy:   { label: 'Dreamy', remotionHint: 'sine ease, symmetrical, floaty' },
+export const MOTION_FEEL: Record<MotionFeel, { label: string; motionHint: string }> = {
+  smooth:   { label: 'Smooth', motionHint: 'long ease-out deceleration, gentle GSAP-style timing' },
+  snappy:   { label: 'Snappy', motionHint: 'short duration, decisive settle' },
+  bouncy:   { label: 'Bouncy', motionHint: 'back/elastic overshoot, playful timing' },
+  dramatic: { label: 'Dramatic', motionHint: 'slow tail, big contrast, strong reveal beats' },
+  dreamy:   { label: 'Dreamy', motionHint: 'sine ease, symmetrical, floaty HTML motion' },
 };
 
 export const CAPTION_TONE: Record<CaptionTone, { label: string; copyRules: string }> = {
@@ -72,7 +72,7 @@ export const TRANSITION_ENERGY: Record<TransitionEnergy, { label: string; prefer
   high:   { label: 'High', prefer: 'wipe, flip, slide-* — zoom-through / punch-cut energy' },
 };
 
-/** Target runtime for generated video (Gemma + Remotion). */
+/** Target runtime for generated video (Gemma + HTML/HyperFrames path). */
 export const DURATION_PRESETS: { sec: number; label: string }[] = [
   { sec: 10, label: '10s' },
   { sec: 15, label: '15s' },
@@ -117,7 +117,7 @@ interface EditorStore {
   activePanel: ActivePanel;
   activeComposition: string | null;
   compositionConfig: CompositionConfig | null;
-  /** Remotion props for `HtmlSlideVideo` when generated via the agent (slidePaths, dimensions, etc.). */
+  /** Render props for generated HTML video preview/export (slidePaths, dimensions, etc.). */
   compositionInputProps: Record<string, unknown> | null;
   generationPhase: GenerationPhase;
   generationStatus: string;
@@ -141,11 +141,11 @@ interface EditorStore {
   transitionEnergy: TransitionEnergy;
   /** Target video length in seconds (drives frame count + Gemma prompt depth). */
   targetDurationSec: number;
-  /** CinematicReel headline / kicker font stacks (same families as slide presets). */
+  /** Legacy reel typography kept for old generated Remotion compositions. Not used by active HTML path. */
   reelTypography: ReelTypographyId;
-  /** Corner / film-strip overlays on generated reels. */
+  /** Legacy reel overlay kept for old generated Remotion compositions. Not used by active HTML path. */
   reelDecor: ReelDecorId;
-  /** remotion = AI → CinematicReel; hyperframes = AI → HTML slides → Playwright PNG → HtmlSlideVideo. */
+  /** Active path: AI → HTML/CSS/JS slides → Playwright PNG → temporary stitch/export adapter. */
   pipelineMode: VideoPipelineMode;
   /** Gemma's creative director brief — populated by brain pass before code gen. */
   concept: ConceptBrief | null;
@@ -229,7 +229,7 @@ const initialState = {
   targetDurationSec: 30,
   reelTypography: 'syne' as ReelTypographyId,
   reelDecor: 'minimal' as ReelDecorId,
-  pipelineMode: 'remotion' as VideoPipelineMode,
+  pipelineMode: 'hyperframes' as VideoPipelineMode,
   directorBrief: null as DirectorBrief | null,
   concept: null as ConceptBrief | null,
   useTTS: false,

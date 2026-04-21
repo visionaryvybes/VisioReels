@@ -38,6 +38,8 @@ import { Reel420WakeUp } from "./compositions/Reel420WakeUp";
 import { SystemOverride } from "./compositions/SystemOverride";
 import { WildApex } from "./compositions/WildApex";
 import { WildPassage } from "./compositions/WildPassage";
+import { ApexPredator } from "./compositions/ApexPredator";
+import { ElvisRoastReel } from "./compositions/ElvisRoastReel";
 import { Reel, DEFAULT_SCENES } from "./compositions/Reel";
 import {
   computeReelDuration,
@@ -150,6 +152,8 @@ export const RemotionRoot: React.FC = () => {
       <Composition id="SystemOverride" component={SystemOverride} durationInFrames={901} fps={30} width={1080} height={1920} defaultProps={{}} />
       <Composition id="WildApex" component={WildApex} durationInFrames={1348} fps={30} width={1080} height={1920} defaultProps={{}} />
       <Composition id="WildPassage" component={WildPassage} durationInFrames={1348} fps={30} width={1080} height={1920} defaultProps={{}} />
+      <Composition id="ApexPredator" component={ApexPredator} durationInFrames={1348} fps={30} width={1080} height={1920} defaultProps={{}} />
+      <Composition id="ElvisRoastReel" component={ElvisRoastReel} durationInFrames={1348} fps={30} width={1080} height={1920} defaultProps={{}} />
     </>
   );
 };
